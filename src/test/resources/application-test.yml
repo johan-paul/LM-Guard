@@ -1,0 +1,47 @@
+# =====================================================================
+# Test profile.
+# Runs against in-memory H2 in PostgreSQL compatibility mode so the test
+# suite needs no database, no Docker and no Supabase account.
+# Flyway is off here: the migrations are PostgreSQL-specific and are
+# verified against a real PostgreSQL, not against H2.
+# =====================================================================
+spring:
+  datasource:
+    url: jdbc:h2:mem:lmguard;MODE=PostgreSQL;DB_CLOSE_DELAY=-1;DB_CLOSE_ON_EXIT=FALSE
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.H2Dialect
+    show-sql: false
+  flyway:
+    enabled: false
+
+lmguard:
+  base-url: http://localhost:8080
+  jwt:
+    secret: dGVzdC1vbmx5LXNlY3JldC1rZXktZm9yLWxtZ3VhcmQtdW5pdC10ZXN0cy0zMmJ5dGVzKw==
+    expiration-ms: 3600000
+    issuer: lm-guard-test
+  ai:
+    mock-mode: true
+    fallback-to-mock: true
+    service-url: http://localhost:9999
+  storage:
+    provider: local
+    local-directory: ./target/test-storage
+  rules:
+    active-version: DEMO-2026.1
+    seed-demo-rules: false
+    default-min-confidence: 0.70
+  cors:
+    allowed-origins: http://localhost:5173
+
+logging:
+  level:
+    root: WARN
+    com.lmguard: INFO

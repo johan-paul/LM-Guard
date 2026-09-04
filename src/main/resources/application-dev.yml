@@ -1,0 +1,26 @@
+# =====================================================================
+# LM-GUARD - development profile
+# Chatty logging, mock AI on, local disk storage so the whole pipeline
+# runs without a Supabase Storage bucket.
+# =====================================================================
+spring:
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+lmguard:
+  ai:
+    mock-mode: ${AI_MOCK_MODE:true}
+    fallback-to-mock: true
+  storage:
+    provider: ${STORAGE_PROVIDER:local}
+  cors:
+    allowed-origins: ${FRONTEND_URL:http://localhost:5173,http://localhost:3000}
+
+logging:
+  level:
+    com.lmguard: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: DEBUG

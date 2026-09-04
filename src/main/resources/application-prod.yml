@@ -1,0 +1,40 @@
+# =====================================================================
+# LM-GUARD - production profile
+# Nothing is defaulted that must not be defaulted: DB_URL, DB_USERNAME,
+# DB_PASSWORD, JWT_SECRET, SUPABASE_* and FRONTEND_URL must all be set.
+# =====================================================================
+spring:
+  jpa:
+    show-sql: false
+  flyway:
+    clean-disabled: true
+
+server:
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+  forward-headers-strategy: framework
+
+lmguard:
+  ai:
+    mock-mode: ${AI_MOCK_MODE:false}
+    fallback-to-mock: ${AI_FALLBACK_TO_MOCK:false}
+  storage:
+    provider: ${STORAGE_PROVIDER:supabase}
+  cors:
+    # Must be an explicit origin list. Unrestricted CORS is rejected at startup.
+    allowed-origins: ${FRONTEND_URL}
+  rules:
+    seed-demo-rules: ${RULES_SEED_DEMO:false}
+
+springdoc:
+  swagger-ui:
+    enabled: ${SWAGGER_ENABLED:false}
+  api-docs:
+    enabled: ${SWAGGER_ENABLED:false}
+
+logging:
+  level:
+    root: WARN
+    com.lmguard: INFO

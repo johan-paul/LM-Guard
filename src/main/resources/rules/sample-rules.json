@@ -1,0 +1,126 @@
+{
+  "rulesetVersion": "DEMO-2026.1",
+  "status": "SAMPLE",
+  "disclaimer": "DEMO / SAMPLE RULES ONLY. These rules are illustrative scaffolding for the LM-GUARD MVP. They are NOT the Legal Metrology Act, 2009 or the Legal Metrology (Packaged Commodities) Rules, 2011, and they are NOT a legally verified or complete representation of any regulation. They exist so the deterministic rule engine can be developed and demonstrated. Before any real-world use, replace this file with a ruleset reviewed and signed off by a qualified Legal Metrology authority. Every output of this engine is advisory input to a human inspector; the enforcement decision is always the inspector's.",
+  "notes": [
+    "type=REQUIRED_FIELD   -> the declaration must be present and non-blank.",
+    "type=PATTERN_MATCH    -> if present, the value must match `pattern` (Java regex).",
+    "type=NUMERIC_RANGE    -> if present, the leading numeric part must sit within [min,max].",
+    "type=MIN_LENGTH       -> if present, the value must be at least `minLength` characters.",
+    "minConfidence         -> below this the finding is INCONCLUSIVE, never NON_COMPLIANT.",
+    "The engine is fully deterministic. No LLM participates in the compliance decision."
+  ],
+  "rules": [
+    {
+      "ruleCode": "DEMO-RULE-001",
+      "ruleName": "Consumer care declaration present",
+      "description": "SAMPLE RULE. A consumer care / customer support contact should be declared on the package.",
+      "field": "CONSUMER_CARE",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Required declaration not detected: consumer care contact is absent from the package image.",
+      "remediation": "Declare a consumer care contact (name, address, phone or e-mail) on the principal display panel."
+    },
+    {
+      "ruleCode": "DEMO-MRP-001",
+      "ruleName": "Retail sale price declaration present",
+      "description": "SAMPLE RULE. The maximum retail price must be declared on the package.",
+      "field": "MRP",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "CRITICAL",
+      "finding": "Required declaration not detected: maximum retail price (MRP) is absent from the package image.",
+      "remediation": "Declare the retail sale price, inclusive of all taxes, on the principal display panel."
+    },
+    {
+      "ruleCode": "DEMO-MRP-002",
+      "ruleName": "Retail sale price is a well-formed amount",
+      "description": "SAMPLE RULE. When present, the MRP should read as a currency amount, optionally prefixed by a rupee marker.",
+      "field": "MRP",
+      "type": "PATTERN_MATCH",
+      "required": false,
+      "minConfidence": 0.70,
+      "pattern": "^\\s*(?:₹|Rs\\.?|INR|MRP)?\\s*\\d{1,7}(?:[.,]\\d{1,2})?\\s*$",
+      "severity": "MINOR",
+      "finding": "Retail sale price is present but not in a readable amount format.",
+      "remediation": "Print the price as a plain amount, for example: MRP Rs. 99.00 (inclusive of all taxes)."
+    },
+    {
+      "ruleCode": "DEMO-QTY-001",
+      "ruleName": "Net quantity declaration present",
+      "description": "SAMPLE RULE. The net quantity must be declared on the package.",
+      "field": "NET_QUANTITY",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "CRITICAL",
+      "finding": "Required declaration not detected: net quantity is absent from the package image.",
+      "remediation": "Declare the net quantity in standard units on the principal display panel."
+    },
+    {
+      "ruleCode": "DEMO-QTY-002",
+      "ruleName": "Net quantity uses a standard unit",
+      "description": "SAMPLE RULE. When present, the net quantity should be a number followed by a standard unit symbol.",
+      "field": "NET_QUANTITY",
+      "type": "PATTERN_MATCH",
+      "required": false,
+      "minConfidence": 0.70,
+      "pattern": "^\\s*\\d{1,7}(?:[.,]\\d{1,3})?\\s*(?:mg|g|gm|kg|ml|mL|l|L|N|U|pcs|pieces)\\s*$",
+      "severity": "MAJOR",
+      "finding": "Net quantity is present but does not use a recognised standard unit symbol.",
+      "remediation": "Express the net quantity using standard unit symbols, for example: 500 g, 1 kg, 250 ml."
+    },
+    {
+      "ruleCode": "DEMO-MFR-001",
+      "ruleName": "Manufacturer / packer / importer declaration present",
+      "description": "SAMPLE RULE. The name of the manufacturer, packer or importer must be declared.",
+      "field": "MANUFACTURER",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Required declaration not detected: manufacturer / packer / importer name is absent from the package image.",
+      "remediation": "Declare the name and complete address of the manufacturer, packer or importer."
+    },
+    {
+      "ruleCode": "DEMO-MFR-002",
+      "ruleName": "Manufacturer name is not a stub",
+      "description": "SAMPLE RULE. A one or two character manufacturer name is almost certainly a misread, not a declaration.",
+      "field": "MANUFACTURER",
+      "type": "MIN_LENGTH",
+      "required": false,
+      "minConfidence": 0.70,
+      "minLength": 3,
+      "severity": "MINOR",
+      "finding": "Manufacturer name was detected but is too short to be a valid declaration.",
+      "remediation": "Confirm the manufacturer name manually against the physical package."
+    },
+    {
+      "ruleCode": "DEMO-ORG-001",
+      "ruleName": "Country of origin declaration present",
+      "description": "SAMPLE RULE. The country of origin should be declared on the package.",
+      "field": "ORIGIN",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Required declaration not detected: country of origin is absent from the package image.",
+      "remediation": "Declare the country of origin of the commodity."
+    },
+    {
+      "ruleCode": "DEMO-DATE-001",
+      "ruleName": "Date of manufacture / packing declaration present",
+      "description": "SAMPLE RULE. The month and year of manufacture, packing or import should be declared.",
+      "field": "MANUFACTURE_DATE",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Required declaration not detected: date of manufacture / packing is absent from the package image.",
+      "remediation": "Declare the month and year of manufacture, pre-packing or import."
+    }
+  ]
+}
