@@ -83,6 +83,28 @@ def _to_bbox(block: Optional[OcrBlock]) -> Optional[BoundingBoxOut]:
     return BoundingBoxOut(x=block.x, y=block.y, width=block.width, height=block.height)
 
 
+def _choose_value(
+    regex_result: Optional[normalization.NormalizedValue],
+    vlm_field: Optional[vlm.VlmField],
+) -> tuple[Optional[str], Optional[str]]:
+    """Picks the value (and the raw text used to locate its OCR bounding box) for one field.
+
+    A confidently-extracted regex normalization wins over the VLM's own phrasing whenever one
+    exists: Gemini may report a numeric/date field's value with its printed label still
+    attached (e.g. "Net Qty 200 g" instead of "200 g"), which reads fine to a human but fails a
+    strict downstream format rule (Rule 13's SI-unit check) that the regex's clean "200 g"
+    would have passed. `try_regex_extract` only ever returns a result for fields it has a
+    normalizer for (MRP, NET_QUANTITY, dates, consumer care, batch number) -- so this never
+    touches semantic-only fields like MANUFACTURER or COMMODITY_NAME, where Gemini remains the
+    only source of a value.
+    """
+    if regex_result is not None and regex_result.normalized is not None:
+        return regex_result.normalized, regex_result.raw_text
+    if vlm_field is not None and vlm_field.value:
+        return vlm_field.value, (vlm_field.quoted_text or vlm_field.value)
+    return None, None
+
+
 def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
     warnings: list[str] = []
     started = time.time()
@@ -140,21 +162,12 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
         vlm_field = vlm_by_field.get(name)
         regex_result = normalization.try_regex_extract(name, ocr_text)
 
-        value = None
-        raw_text = None
-        matched_block = None
         pattern_confidence = regex_result.pattern_confidence if regex_result else None
 
-        if vlm_field is not None and vlm_field.value:
-            value = vlm_field.value
-            raw_text = vlm_field.quoted_text or vlm_field.value
-            matched_block = _best_matching_block(raw_text, ocr_blocks)
-        elif regex_result is not None and regex_result.normalized is not None:
-            value = regex_result.normalized
-            raw_text = regex_result.raw_text
-            matched_block = _best_matching_block(raw_text, ocr_blocks)
-        # else: genuinely not detected by either path -- value stays None, which is a first-
-        # class, honest outcome (see ExtractedFact.notDetected on the Java side), not an error.
+        value, raw_text = _choose_value(regex_result, vlm_field)
+        matched_block = _best_matching_block(raw_text, ocr_blocks) if raw_text else None
+        # value stays None when neither path detected anything -- a first-class, honest
+        # outcome (see ExtractedFact.notDetected on the Java side), not an error.
 
         ocr_confidence = matched_block.confidence if matched_block else None
         multi_pass_agreement = _count_passes(matched_block, original_count, enhanced_count)

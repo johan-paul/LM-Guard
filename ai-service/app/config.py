@@ -27,10 +27,10 @@ class Settings:
     # (fine for local dev; the operator is expected to set this before exposing the service).
     api_key: str = os.environ.get("AI_SERVICE_API_KEY", "")
 
-    # Claude vision key for semantic extraction. Absent -> VLM step is skipped and the
+    # Gemini vision key for semantic extraction. Absent -> VLM step is skipped and the
     # service degrades to OCR + regex extraction only (lower confidence, never a crash).
-    anthropic_api_key: str = os.environ.get("ANTHROPIC_API_KEY", "")
-    anthropic_model: str = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+    gemini_api_key: str = os.environ.get("GEMINI_API_KEY", "")
+    gemini_model: str = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
 
     # Below this image-quality score, the service returns everything as not-detected with a
     # warning rather than guessing from an unreadable photo.
@@ -39,7 +39,7 @@ class Settings:
     # Timeout for downloading the package image from the URL the backend gives us.
     image_fetch_timeout_s: float = _float("AI_IMAGE_FETCH_TIMEOUT_S", 15.0)
 
-    # Timeout for the Claude vision call.
+    # Timeout for the VLM vision call.
     vlm_timeout_s: float = _float("AI_VLM_TIMEOUT_S", 30.0)
 
     enable_vlm: bool = _bool("AI_ENABLE_VLM", True)

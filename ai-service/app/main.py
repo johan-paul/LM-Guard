@@ -30,7 +30,7 @@ def _check_api_key(x_api_key: str | None) -> None:
 def health() -> dict:
     return {
         "status": "ok",
-        "vlmEnabled": bool(settings.enable_vlm and settings.anthropic_api_key),
+        "vlmEnabled": bool(settings.enable_vlm and settings.gemini_api_key),
         "apiKeyRequired": bool(settings.api_key),
     }
 

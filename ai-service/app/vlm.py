@@ -1,4 +1,4 @@
-"""Semantic extraction via a vision-language model (Claude).
+"""Semantic extraction via a vision-language model (Gemini).
 
 Strict boundary: this module extracts STRUCTURED FACTS ("what is visible"), never a compliance
 verdict. It is given the OCR text as context (so it can ground its answer in what OCR actually
@@ -7,18 +7,34 @@ prompt instruction to that effect, but untrusted model output is still validated
 blindly: every value returned is checked against the OCR corpus before being trusted (see
 `_grounded_in_ocr` below), and a field the model invents that appears nowhere in the OCR text is
 downgraded rather than passed through.
+
+Provider note: this was originally implemented against Claude (tool-use forced structured
+output); it now calls Gemini (`response_schema`-constrained JSON output) instead, because the
+Anthropic account used during development ran out of credit. The provider-specific code is
+confined to this module -- everything below `extract_fields()`'s call site (pipeline.py,
+confidence.py, normalization.py) is unchanged and unaware of which vendor answered.
 """
 from __future__ import annotations
 
-import base64
 import json
 import logging
+import time
 from dataclasses import dataclass
 from typing import Optional
+
+import httpx
 
 from .config import settings
 
 logger = logging.getLogger("ai_service.vlm")
+
+# Gemini has shown real transient failures in production use (read timeouts, 503 "high
+# demand"). A small, bounded retry absorbs those without risking a hung request: at most 2
+# retries (3 attempts total), exponential backoff, and it still respects settings.vlm_timeout_s
+# on every individual attempt. A permanent failure (bad key, bad model name, 4xx) is not
+# retried -- retrying those wastes the retry budget on something that will never succeed.
+_MAX_RETRIES = 2
+_RETRY_BASE_DELAY_S = 1.0
 
 FIELD_DESCRIPTIONS = {
     "MRP": "Maximum/retail sale price printed on the package, inclusive of taxes (e.g. 'Rs. 99.00').",
@@ -32,37 +48,37 @@ FIELD_DESCRIPTIONS = {
     "COMMODITY_NAME": "Common or generic name of the commodity (e.g. 'Potato Chips', not the brand name).",
 }
 
-_EXTRACTION_TOOL = {
-    "name": "record_package_facts",
-    "description": "Record the declarations visible on this package image.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "fields": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string", "description": "One of the requested field names."},
-                        "value": {
-                            "type": ["string", "null"],
-                            "description": "The value exactly as printed, or null if not visible on this image.",
-                        },
-                        "confidence": {
-                            "type": "number",
-                            "description": "0..1, your confidence that the value (or its absence) is correct.",
-                        },
-                        "quoted_text": {
-                            "type": ["string", "null"],
-                            "description": "The exact substring from the OCR text below that supports this value, or null.",
-                        },
+# Gemini's response_schema is a select subset of OpenAPI 3.0 (not full JSON Schema): a nullable
+# field is `{"type": "string", "nullable": true}`, not `{"type": ["string", "null"]}`.
+_RESPONSE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "fields": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "One of the requested field names."},
+                    "value": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "The value exactly as printed, or null if not visible on this image.",
                     },
-                    "required": ["name", "value", "confidence"],
+                    "confidence": {
+                        "type": "number",
+                        "description": "0..1, your confidence that the value (or its absence) is correct.",
+                    },
+                    "quoted_text": {
+                        "type": "string",
+                        "nullable": True,
+                        "description": "The exact substring from the OCR text below that supports this value, or null.",
+                    },
                 },
-            }
-        },
-        "required": ["fields"],
+                "required": ["name", "value", "confidence"],
+            },
+        }
     },
+    "required": ["fields"],
 }
 
 
@@ -99,22 +115,23 @@ def extract_fields(
 ) -> tuple[list[VlmField], Optional[str]]:
     """Returns (fields, error). `error` is set (and `fields` empty) when the VLM could not be
     used at all -- caller falls back to OCR/regex-only extraction, never crashes."""
-    if not settings.enable_vlm or not settings.anthropic_api_key:
-        return [], "VLM disabled or ANTHROPIC_API_KEY not set"
+    if not settings.enable_vlm or not settings.gemini_api_key:
+        return [], "VLM disabled or GEMINI_API_KEY not set"
 
     try:
-        import anthropic
+        from google import genai
+        from google.genai import errors, types
     except ImportError:
-        return [], "anthropic package not installed"
+        return [], "google-genai package not installed"
 
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key, timeout=settings.vlm_timeout_s)
+    client = genai.Client(api_key=settings.gemini_api_key)
 
     field_list = "\n".join(f"- {f}: {FIELD_DESCRIPTIONS.get(f, 'see field name')}" for f in requested_fields)
     prompt = (
         "You are looking at a photograph of a retail package. Below is the OCR text already "
         "read from this image (it may contain errors or be incomplete).\n\n"
         f"OCR TEXT:\n{ocr_text or '(no text was read by OCR)'}\n\n"
-        "Extract exactly these fields by calling record_package_facts:\n"
+        "Extract exactly these fields as a `fields` array, one entry per field listed below:\n"
         f"{field_list}\n\n"
         "Rules: (1) Only report a value if it is actually visible in the image. "
         "(2) If a field is not visible, set value to null and give your confidence in that "
@@ -124,38 +141,46 @@ def extract_fields(
         "(5) You are extracting facts, not making a legal compliance judgement."
     )
 
-    try:
-        response = client.messages.create(
-            model=settings.anthropic_model,
-            max_tokens=2000,
-            tools=[_EXTRACTION_TOOL],
-            tool_choice={"type": "tool", "name": "record_package_facts"},
-            messages=[{
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": _media_type(image_bytes),
-                            "data": base64.b64encode(image_bytes).decode("ascii"),
-                        },
-                    },
-                    {"type": "text", "text": prompt},
+    response = None
+    last_error: Optional[Exception] = None
+    for attempt in range(_MAX_RETRIES + 1):
+        try:
+            response = client.models.generate_content(
+                model=settings.gemini_model,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=_media_type(image_bytes)),
+                    prompt,
                 ],
-            }],
-        )
-    except Exception as exc:  # noqa: BLE001 - network/API failure must degrade, not crash
-        logger.warning("VLM call failed: %s", exc)
-        return [], f"VLM call failed: {exc}"
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    response_schema=_RESPONSE_SCHEMA,
+                    http_options=types.HttpOptions(timeout=int(settings.vlm_timeout_s * 1000)),
+                ),
+            )
+            last_error = None
+            break
+        except Exception as exc:  # noqa: BLE001 - network/API failure must degrade, not crash
+            last_error = exc
+            transient = isinstance(exc, (httpx.TimeoutException, errors.ServerError))
+            if transient and attempt < _MAX_RETRIES:
+                delay = _RETRY_BASE_DELAY_S * (2**attempt)
+                logger.warning(
+                    "Gemini call failed (attempt %d/%d, %s: %s); retrying in %.1fs",
+                    attempt + 1, _MAX_RETRIES + 1, exc.__class__.__name__, exc, delay)
+                time.sleep(delay)
+                continue
+            break
 
-    tool_use = next((block for block in response.content if block.type == "tool_use"), None)
-    if tool_use is None:
-        return [], "VLM did not return a tool_use block"
+    if last_error is not None:
+        logger.warning("VLM call failed after %d attempt(s): %s", attempt + 1, last_error)
+        return [], f"VLM call failed: {last_error}"
+
+    if not response.text:
+        return [], "VLM returned an empty response"
 
     try:
-        raw_fields = tool_use.input.get("fields", [])
-    except (AttributeError, json.JSONDecodeError) as exc:
+        raw_fields = json.loads(response.text).get("fields", [])
+    except (json.JSONDecodeError, AttributeError) as exc:
         return [], f"VLM returned malformed structured output: {exc}"
 
     results: list[VlmField] = []

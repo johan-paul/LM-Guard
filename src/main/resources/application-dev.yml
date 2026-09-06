@@ -13,7 +13,7 @@ spring:
 lmguard:
   ai:
     mock-mode: ${AI_MOCK_MODE:true}
-    fallback-to-mock: true
+    fallback-to-mock: ${AI_FALLBACK_TO_MOCK:true}
   storage:
     provider: ${STORAGE_PROVIDER:local}
   cors:

@@ -91,7 +91,13 @@ public class ExternalAIAnalysisService implements AIAnalysisService {
         }
 
         long elapsed = System.currentTimeMillis() - startedAt;
-        log.info("External AI returned {} facts for inspection {} in {} ms", facts.size(), inspectionId, elapsed);
+        int warningCount = body.warnings() == null ? 0 : body.warnings().size();
+        log.info("inspection={} provider={} model={} facts={} latency={}ms warnings={}",
+                inspectionId, AIAnalysisResult.PROVIDER_EXTERNAL, body.modelVersion(), facts.size(), elapsed,
+                warningCount);
+        if (warningCount > 0) {
+            log.warn("AI service warnings for inspection {}: {}", inspectionId, body.warnings());
+        }
 
         return new AIAnalysisResult(
                 inspectionId,

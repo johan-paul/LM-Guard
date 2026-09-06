@@ -50,12 +50,13 @@ run reliably on a judge's machine. If your deployment target can commit to Paddl
 specifically, `ocr.py` is a single, isolated module -- swapping the engine means changing
 `_engine()` and `_run_single_pass()` there and nowhere else.
 
-## Why Claude for the VLM step
+## Why Gemini for the VLM step
 
-This is Claude Code; Anthropic's API was the natural choice, and `vlm.py` uses tool-use
-(forced structured output) so the response is always valid JSON, not a hopeful parse of free
-text. The module is isolated the same way OCR is -- if you want a different vision model,
-`vlm.extract_fields()` is the only function that needs to change.
+`vlm.py` originally called Claude; it now calls Gemini (the Anthropic account used during
+development ran out of credit), using `response_schema`-constrained JSON output so the
+response is always valid JSON, not a hopeful parse of free text. The module is isolated the
+same way OCR is -- if you want a different vision model, `vlm.extract_fields()` is the only
+function that needs to change.
 
 ## Running it
 
@@ -64,7 +65,7 @@ cd ai-service
 python -m venv .venv
 .venv/Scripts/activate        # .venv/bin/activate on macOS/Linux
 pip install -r requirements.txt
-cp .env.example .env          # edit in ANTHROPIC_API_KEY if you have one
+cp .env.example .env          # edit in GEMINI_API_KEY if you have one
 uvicorn app.main:app --port 8000
 ```
 
@@ -79,7 +80,7 @@ AI_SERVICE_API_KEY=            # must match this service's AI_SERVICE_API_KEY if
 `GET /health` reports whether the VLM step is actually active (`vlmEnabled`), so you can
 confirm which mode you're running in without reading logs.
 
-## Without an ANTHROPIC_API_KEY
+## Without a GEMINI_API_KEY
 
 The service still works. It falls back to OCR + regex extraction only, and says so in the
 response's `warnings`. What that means concretely:
