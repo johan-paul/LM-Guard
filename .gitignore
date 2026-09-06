@@ -36,3 +36,9 @@ Thumbs.db
 # ---- Logs ----
 *.log
 logs/
+
+# ---- ai-service (Python) ----
+ai-service/.venv/
+ai-service/**/__pycache__/
+ai-service/.pytest_cache/
+ai-service/*.egg-info/

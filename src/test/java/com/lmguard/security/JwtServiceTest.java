@@ -44,7 +44,16 @@ class JwtServiceTest {
     void rejectsBadTokens() {
         String valid = jwtService.generateToken(principal());
 
-        assertThat(jwtService.parseClaims(valid + "x")).isNull();
+        // Flipping the last character (rather than appending one) reliably corrupts the
+        // decoded signature bytes regardless of base64url group alignment: appending a
+        // character can, depending on the signature's encoded length, complete a new base64
+        // group that a lenient decoder still parses "successfully" into a different byte
+        // count, which does not exercise the tamper-rejection path this test means to check.
+        char lastChar = valid.charAt(valid.length() - 1);
+        char replacement = lastChar == 'A' ? 'B' : 'A';
+        String tampered = valid.substring(0, valid.length() - 1) + replacement;
+
+        assertThat(jwtService.parseClaims(tampered)).isNull();
         assertThat(jwtService.parseClaims("not-a-jwt")).isNull();
         assertThat(jwtService.parseClaims("")).isNull();
         assertThat(jwtService.parseClaims(null)).isNull();

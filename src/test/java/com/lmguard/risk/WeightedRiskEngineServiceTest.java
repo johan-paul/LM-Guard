@@ -78,7 +78,18 @@ class WeightedRiskEngineServiceTest {
     @Test
     @DisplayName("the total is capped at 100 and says so")
     void capsAtMaximum() {
-        RiskAssessment assessment = engine.assess(new RiskInput(
+        // The configured weights (30+20+25+10+15=100) sum to exactly maxScore, so all five
+        // factors firing at once can reach 100 but never exceed it -- the cap message can only
+        // be exercised with a configuration whose weights sum above the max, which is a real
+        // (if unusual) admin configuration this engine must still handle correctly.
+        RiskProperties overweighted = new RiskProperties(
+                new RiskProperties.Weights(40, 20, 25, 10, 15),
+                new RiskProperties.Thresholds(30, 60),
+                100,
+                "FOOD,PACKAGED_FOOD,EDIBLE_OIL,INFANT_FOOD,DAIRY,MEDICINE,COSMETICS");
+        WeightedRiskEngineService overweightedEngine = new WeightedRiskEngineService(overweighted);
+
+        RiskAssessment assessment = overweightedEngine.assess(new RiskInput(
                 10, 10, true, "MEDICINE",
                 Set.of("DEMO-RULE-001"), Set.of("DEMO-RULE-001")));
 

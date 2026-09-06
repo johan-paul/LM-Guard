@@ -36,11 +36,15 @@ Three consequences worth understanding before you read the code:
 3. **Rules are versioned data, not code.** Each inspection records the exact `ruleset_version` it
    was judged under, so a decision made months ago can still be reproduced and defended today.
 
-> ⚠️ **The rules shipped in this repository are clearly marked demo/sample rules.** They are *not*
-> the Legal Metrology Act, 2009 or the Legal Metrology (Packaged Commodities) Rules, 2011, and they
-> are *not* legally verified. They exist so the engine can be developed and demonstrated. Replace
-> `src/main/resources/rules/sample-rules.json` with a ruleset reviewed by a qualified Legal
-> Metrology authority before any real-world use.
+> ⚠️ **Two rulesets ship in this repository.** `src/main/resources/rules/sample-rules.json`
+> (`DEMO-2026.1`) is illustrative scaffolding and is *not* the Legal Metrology Act, 2009 or the
+> Legal Metrology (Packaged Commodities) Rules, 2011. `src/main/resources/rules/lm-pc-2011-rules.json`
+> (`LM-PC-2011-v1`, the **default as of this repository state**) is derived from the actual text of
+> the 2011 Rules — see [`legal-rules/`](legal-rules/) for the full extraction, coverage table and
+> review notes — but it still has **not** been signed off by a qualified Legal Metrology authority,
+> and it deliberately loads only the subset of rules an image can check unconditionally (see
+> [`docs/RULE_ENGINE.md`](docs/RULE_ENGINE.md) for exactly which, and why). Do not treat either
+> ruleset as legally authoritative without independent review.
 
 ---
 
@@ -64,7 +68,7 @@ flowchart TD
 
     API --> DB[("Supabase PostgreSQL<br/>Flyway-migrated")]
     API --> ST[("Supabase Storage<br/>images · evidence · reports")]
-    AI -.->|HTTP, pluggable| PY["Python AI Service<br/>OpenCV · PaddleOCR · VLM"]
+    AI -.->|HTTP, pluggable| PY["Python AI Service<br/>OpenCV · RapidOCR · Claude Vision"]
 
     style RUL fill:#1f6feb,color:#fff
     style PY stroke-dasharray: 5 5
@@ -257,7 +261,8 @@ Everything is read from the environment; nothing is hardcoded. Full list in
 | `AI_FALLBACK_TO_MOCK` | | `true` (dev) / `false` (prod) | Degrade to the mock on AI failure |
 | `AI_SERVICE_URL` | when not mocking | `http://localhost:8000` | Python AI service |
 | `FRONTEND_URL` | ✅ in prod | `http://localhost:5173` | CORS origins, comma-separated |
-| `RULES_ACTIVE_VERSION` | | `DEMO-2026.1` | Ruleset stamped on inspections |
+| `RULES_ACTIVE_VERSION` | | `LM-PC-2011-v1` | Ruleset stamped on inspections (`DEMO-2026.1` still available) |
+| `RULES_SAMPLE_FILE` | | `classpath:rules/lm-pc-2011-rules.json` | Bundled ruleset fallback file |
 | `RULES_SEED_DEMO` | | `true` (dev) / `false` (prod) | Seed demo rules on first start |
 | `SPRING_PROFILES_ACTIVE` | | `dev` | `dev` \| `prod` |
 
@@ -297,9 +302,11 @@ data later.
 On first start you will also see:
 
 ```
-Seeded 9 DEMO rules for ruleset version 'DEMO-2026.1'. These are sample rules and are NOT
-official Legal Metrology regulations.
+Seeded 9 CUSTOM rules for ruleset version 'LM-PC-2011-v1'.
 ```
+
+(`RULES_SAMPLE_FILE=classpath:rules/sample-rules.json RULES_ACTIVE_VERSION=DEMO-2026.1` switches
+back to the illustrative demo ruleset instead.)
 
 ---
 
@@ -514,8 +521,10 @@ the UI would undo the property the backend works hardest to preserve.
 
 ## 14. AI service integration
 
-Today `AI_MOCK_MODE=true` routes everything to `MockAIAnalysisService`. To plug in the real service,
-implement one endpoint and flip two variables.
+Today `AI_MOCK_MODE=true` routes everything to `MockAIAnalysisService`. A real implementation of
+the contract below now exists at [`ai-service/`](ai-service/) (RapidOCR + Claude vision — see
+[`ai-service/README.md`](ai-service/README.md) and [`docs/AI_PIPELINE.md`](docs/AI_PIPELINE.md)
+for how it works and what was actually verified running). To point at it instead of the mock:
 
 **Request** — `POST {AI_SERVICE_URL}/analyze`:
 
@@ -596,6 +605,9 @@ lm-guard-backend/
 │   ├── db/migration/  V1 … V10
 │   └── rules/sample-rules.json     ← DEMO RULES, clearly marked
 ├── src/test/java/com/lmguard/      rule engine · risk engine · pipeline · REST · JWT · mock AI
+├── legal-rules/        structured extraction of the 2011 Rules + coverage/review notes
+├── ai-service/         Python OCR/VLM implementation of the AIAnalysisService contract
+├── docs/               IMPLEMENTATION_AUDIT · AI_PIPELINE · RULE_ENGINE
 ├── .env.example  .gitignore  docker-compose.yml  pom.xml  mvnw  README.md
 ```
 
@@ -687,8 +699,9 @@ Not oversights — scope decisions for an MVP:
 
 - ❌ Microservices (a modular monolith is the right size here)
 - ❌ Blockchain, AR, predictive ML, nationwide scraping
-- ❌ A complete Legal Metrology ruleset (needs legal review, not more code)
-- ❌ Any LLM in the compliance decision path
+- ❌ A *legally signed-off* ruleset (`legal-rules/` is a faithful structuring of the 2011 Rules
+  text, not a substitute for review by a qualified Legal Metrology authority)
+- ❌ Any LLM in the compliance decision path — Claude Vision (`ai-service/`) extracts facts only
 
 ---
 
@@ -700,13 +713,17 @@ In order:
 2. **Run the §11 flow end to end** and confirm you get `NON_COMPLIANT` with evidence.
 3. **Point it at Supabase** — real credentials, `STORAGE_PROVIDER=supabase`, three buckets.
 4. **Hand Swagger to the frontend team.** They are unblocked from this moment.
-5. **Hand §14 to the AI team.** They are unblocked too.
-6. **Replace the demo rules.** The highest-value work in the whole project: sit down with the actual
-   Legal Metrology (Packaged Commodities) Rules and encode a small number of them *correctly*, with
-   a citation in each rule's `description`. Ten defensible rules beat a hundred invented ones, and
-   the judges will ask where the rules came from.
-7. Then: evidence image cropping, PDF reports, online-listing capture, inspector review/override
-   (an inspector confirming or overturning a finding — the missing half of "the human decides").
+5. **Run `ai-service/`** (see §14) and get a real `ANTHROPIC_API_KEY` into it — the OCR half was
+   verified end-to-end in this repository's history; the VLM half needs a live key to exercise
+   against a real judge-supplied package photo before demo day.
+6. ~~Replace the demo rules~~ **Done** — see `legal-rules/` and `docs/RULE_ENGINE.md`. What's left:
+   get the six loaded rules (and ideally more, once applicability support exists — see
+   `docs/RULE_ENGINE.md`'s follow-up section) in front of an actual Legal Metrology officer for
+   sign-off. Ten defensible, cited rules beat a hundred invented ones.
+7. Then: multi-panel image support (front/back/label in one inspection — schema change, scoped in
+   `docs/IMPLEMENTATION_AUDIT.md` §4), evidence image cropping, PDF reports, online-listing capture,
+   inspector review/override (an inspector confirming or overturning a finding — the missing half
+   of "the human decides").
 
 ### A note on the build
 

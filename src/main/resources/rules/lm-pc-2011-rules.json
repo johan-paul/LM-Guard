@@ -1,0 +1,127 @@
+{
+  "rulesetVersion": "LM-PC-2011-v1",
+  "status": "CUSTOM",
+  "disclaimer": "Rules derived from the text of The Legal Metrology (Packaged Commodities) Rules, 2011 (GSR 202(E), 7 March 2011) as supplied to this project. This engine ruleset covers only the subset of Rule 6 declarations that (a) map to a fact this backend's AI layer reports on today and (b) apply unconditionally to a retail package under Chapter II, i.e. it does not encode package-type exemptions (Rule 3), quantity exemptions (Rule 26), or food/cosmetic/seed carve-outs (Rule 6 explanations/provisos) -- the deterministic engine has no applicability/exemption model yet. See legal-rules/RULE_COVERAGE.md and legal-rules/RULE_REVIEW.md for the full picture, including the rules NOT loaded here and why. This is advisory input to a human inspector; it is not a legal verdict and has not been reviewed by a Legal Metrology authority.",
+  "notes": [
+    "Every rule below cites its source: Legal Metrology (Packaged Commodities) Rules, 2011, rule number, in `description`.",
+    "type=REQUIRED_FIELD   -> the declaration must be present and non-blank.",
+    "type=PATTERN_MATCH    -> if present, the value must match `pattern` (Java regex).",
+    "type=MIN_LENGTH       -> if present, the value must be at least `minLength` characters.",
+    "minConfidence         -> below this the finding is INCONCLUSIVE, never NON_COMPLIANT (matches lmguard.rules.default-min-confidence).",
+    "This ruleset intentionally omits an ORIGIN/country-of-origin rule -- see legal-rules/RULE_REVIEW.md #2 for why the demo ruleset's DEMO-ORG-001 does not reflect this source document.",
+    "The engine is fully deterministic. No LLM participates in the compliance decision."
+  ],
+  "rules": [
+    {
+      "ruleCode": "LM-PC-6-1-a-MANUFACTURER",
+      "ruleName": "Manufacturer/packer/importer name and address declared",
+      "description": "Rule 6(1)(a): every package must bear the name and address of the manufacturer, or of both manufacturer and packer where different, and additionally of the importer for an imported package (see also Rule 10).",
+      "field": "MANUFACTURER",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Rule 6(1)(a): the name and address of the manufacturer (or manufacturer and packer) was not detected on the package.",
+      "remediation": "Declare the manufacturer's complete name and address on the principal display panel, per Rule 6(1)(a) and Rule 10 of the Legal Metrology (Packaged Commodities) Rules, 2011."
+    },
+    {
+      "ruleCode": "LM-PC-6-1-a-MANUFACTURER-LEN",
+      "ruleName": "Manufacturer declaration is not a stub",
+      "description": "Rule 10 requires a 'complete address' sufficient to identify and locate the manufacturer/packer/importer; a one- or two-character reading is almost certainly a misread, not a genuine declaration.",
+      "field": "MANUFACTURER",
+      "type": "MIN_LENGTH",
+      "required": false,
+      "minConfidence": 0.70,
+      "minLength": 3,
+      "severity": "MINOR",
+      "finding": "Manufacturer/packer name was detected but is too short to be a valid declaration under Rule 10.",
+      "remediation": "Confirm the manufacturer/packer name and complete address manually against the physical package."
+    },
+    {
+      "ruleCode": "LM-PC-6-1-b-COMMODITY_NAME",
+      "ruleName": "Common/generic name of the commodity declared",
+      "description": "Rule 6(1)(b): the common or generic name of the commodity must be declared; for multi-product packages, the name and quantity of each product.",
+      "field": "COMMODITY_NAME",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Rule 6(1)(b): the common or generic name of the commodity was not detected on the package.",
+      "remediation": "Declare the common or generic name of the commodity on the principal display panel, per Rule 6(1)(b)."
+    },
+    {
+      "ruleCode": "LM-PC-6-1-c-NET_QUANTITY",
+      "ruleName": "Net quantity declared",
+      "description": "Rule 6(1)(c): the net quantity, in standard units of weight or measure (or number, where sold by number), must be declared.",
+      "field": "NET_QUANTITY",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "CRITICAL",
+      "finding": "Rule 6(1)(c): the net quantity of the commodity was not detected on the package.",
+      "remediation": "Declare the net quantity in standard units on the principal display panel, per Rule 6(1)(c)."
+    },
+    {
+      "ruleCode": "LM-PC-13-NET_QUANTITY-UNIT",
+      "ruleName": "Net quantity uses a Rule 13 standard SI unit",
+      "description": "Rule 13(5): only SI units may be used for net quantity (items sold by number use 'N' or 'U'); Rule 13(2)-(3) fix which sub-multiple/multiple applies at which threshold.",
+      "field": "NET_QUANTITY",
+      "type": "PATTERN_MATCH",
+      "required": false,
+      "minConfidence": 0.70,
+      "pattern": "^\\s*\\d{1,7}(?:[.,]\\d{1,3})?\\s*(?:mg|g|gm|kg|ml|mL|l|L|cm|mm|m|sq\\.?\\s?cm|sq\\.?\\s?m|N|U|pcs|pieces)\\s*$",
+      "severity": "MAJOR",
+      "finding": "Net quantity is present but is not expressed in a recognised SI unit as required by Rule 13.",
+      "remediation": "Express the net quantity using an SI unit symbol per Rule 13, for example: 500 g, 1 kg, 250 ml, 1.5 L."
+    },
+    {
+      "ruleCode": "LM-PC-6-1-d-MANUFACTURE_DATE",
+      "ruleName": "Month and year of manufacture/pre-packing/import declared",
+      "description": "Rule 6(1)(d): the month and year in which the commodity was manufactured, pre-packed or imported must be declared (subject to the exceptions in the rule for bidis/incense sticks and certain LPG cylinders).",
+      "field": "MANUFACTURE_DATE",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Rule 6(1)(d): the month and year of manufacture, pre-packing or import was not detected on the package.",
+      "remediation": "Declare the month and year of manufacture, pre-packing or import per Rule 6(1)(d). Note: this declaration is not required on bidi/incense-stick packages or on specified domestic LPG cylinders -- confirm applicability before treating an absence as a breach."
+    },
+    {
+      "ruleCode": "LM-PC-6-1-e-MRP",
+      "ruleName": "Retail sale price (MRP) declared",
+      "description": "Rule 6(1)(e) and Rule 2(m): the retail sale price must be declared, printed as 'Maximum or Max. retail price Rs/-...inclusive of all taxes' or 'MRP Rs/-...incl. of all taxes'.",
+      "field": "MRP",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "CRITICAL",
+      "finding": "Rule 6(1)(e): the retail sale price (MRP) was not detected on the package.",
+      "remediation": "Declare the retail sale price, inclusive of all taxes, on the principal display panel per Rule 6(1)(e) and Rule 2(m)."
+    },
+    {
+      "ruleCode": "LM-PC-2-m-MRP-FORMAT",
+      "ruleName": "MRP is a well-formed amount",
+      "description": "Rule 2(m): the retail sale price must be printed as a definite amount ('MRP Rs/- ... inclusive of all taxes'), not a vague or unreadable figure.",
+      "field": "MRP",
+      "type": "PATTERN_MATCH",
+      "required": false,
+      "minConfidence": 0.70,
+      "pattern": "^\\s*(?:\\u20b9|Rs\\.?|INR|MRP)?\\s*\\d{1,7}(?:[.,]\\d{1,2})?\\s*(?:/-|incl\\.?.*)?\\s*$",
+      "severity": "MINOR",
+      "finding": "Retail sale price is present but not in a readable amount format as required by Rule 2(m).",
+      "remediation": "Print the price as a plain, definite amount, for example: MRP Rs. 99.00 (inclusive of all taxes)."
+    },
+    {
+      "ruleCode": "LM-PC-6-2-CONSUMER_CARE",
+      "ruleName": "Consumer-complaint contact declared",
+      "description": "Rule 6(2): every package must bear the name, address, telephone number and e-mail address (if available) of the person or office that can be contacted for consumer complaints.",
+      "field": "CONSUMER_CARE",
+      "type": "REQUIRED_FIELD",
+      "required": true,
+      "minConfidence": 0.70,
+      "severity": "MAJOR",
+      "finding": "Rule 6(2): a consumer-complaint contact (name/address/phone/e-mail) was not detected on the package.",
+      "remediation": "Declare a consumer-complaint contact (name, address, phone and/or e-mail) on the package per Rule 6(2)."
+    }
+  ]
+}

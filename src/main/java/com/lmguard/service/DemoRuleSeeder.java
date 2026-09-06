@@ -73,8 +73,13 @@ public class DemoRuleSeeder implements ApplicationRunner {
 
         ruleRepository.saveAll(rules);
         ruleCatalog.evict(version);
-        log.info("Seeded {} DEMO rules for ruleset version '{}'. These are sample rules and are NOT "
-                + "official Legal Metrology regulations.", rules.size(), version);
+        if (ruleSet.isSample()) {
+            log.info("Seeded {} DEMO rules for ruleset version '{}'. These are sample rules and are NOT "
+                    + "official Legal Metrology regulations.", rules.size(), version);
+        } else {
+            log.info("Seeded {} rules for ruleset version '{}' from {}.",
+                    rules.size(), version, rulesProperties.sampleFile());
+        }
     }
 
     private Rule toEntity(RuleDefinition definition, String version, RuleSet ruleSet) {

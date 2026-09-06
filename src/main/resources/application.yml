@@ -119,10 +119,13 @@ lmguard:
     service-role-key: ${SUPABASE_SERVICE_ROLE_KEY:}
 
   rules:
-    # Ruleset version recorded on every inspection.
-    active-version: ${RULES_ACTIVE_VERSION:DEMO-2026.1}
-    sample-file: classpath:rules/sample-rules.json
-    # Seed the demo ruleset into the `rules` table on first start.
+    # Ruleset version recorded on every inspection. Defaults to the rules derived from the
+    # actual Legal Metrology (Packaged Commodities) Rules, 2011 (see legal-rules/). Set to
+    # DEMO-2026.1 (with RULES_SAMPLE_FILE=classpath:rules/sample-rules.json) to use the
+    # illustrative demo ruleset instead.
+    active-version: ${RULES_ACTIVE_VERSION:LM-PC-2011-v1}
+    sample-file: ${RULES_SAMPLE_FILE:classpath:rules/lm-pc-2011-rules.json}
+    # Seed the active ruleset into the `rules` table on first start.
     seed-demo-rules: ${RULES_SEED_DEMO:true}
     # A field detected below this confidence is INCONCLUSIVE, never NON_COMPLIANT.
     default-min-confidence: ${RULES_MIN_CONFIDENCE:0.70}
