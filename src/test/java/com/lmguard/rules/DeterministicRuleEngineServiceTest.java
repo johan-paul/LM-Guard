@@ -105,7 +105,7 @@ class DeterministicRuleEngineServiceTest {
 
             assertThat(result.status()).isEqualTo(ComplianceStatus.NON_COMPLIANT);
             assertThat(result.breaches()).hasSize(1);
-            RuleFinding finding = result.breaches().getFirst();
+            RuleFinding finding = result.breaches().get(0);
             assertThat(finding.ruleCode()).isEqualTo("R-CONSUMER_CARE");
             assertThat(finding.decisionConfidence()).isEqualTo(0.91);
             assertThat(finding.observedValue()).isNull();
@@ -122,7 +122,7 @@ class DeterministicRuleEngineServiceTest {
             // The point of the whole design: a bad photograph is not evidence of a missing label.
             assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
             assertThat(result.breaches()).hasSize(1);
-            assertThat(result.breaches().getFirst().status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
+            assertThat(result.breaches().get(0).status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
         }
 
         @Test
@@ -133,7 +133,7 @@ class DeterministicRuleEngineServiceTest {
             ComplianceResult result = engine.evaluate(facts(Map.of("MRP", present("9?", 0.41))), VERSION);
 
             assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
-            assertThat(result.breaches().getFirst().finding()).contains("low confidence");
+            assertThat(result.breaches().get(0).finding()).contains("low confidence");
         }
 
         @Test
@@ -144,7 +144,7 @@ class DeterministicRuleEngineServiceTest {
             ComplianceResult result = engine.evaluate(facts(Map.of("MRP", present("99", 0.99))), VERSION);
 
             assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
-            assertThat(result.breaches().getFirst().finding()).contains("not assessed");
+            assertThat(result.breaches().get(0).finding()).contains("not assessed");
         }
 
         @Test

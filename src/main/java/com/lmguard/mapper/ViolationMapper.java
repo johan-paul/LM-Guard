@@ -23,7 +23,7 @@ public class ViolationMapper {
                 : violation.getEvidence().stream().map(evidenceMapper::toResponse).toList();
 
         // The frontend highlights one region per violation; the rest stay available in allEvidence.
-        EvidenceResponse primary = allEvidence.isEmpty() ? null : allEvidence.getFirst();
+        EvidenceResponse primary = allEvidence.isEmpty() ? null : allEvidence.get(0);
 
         return new ViolationResponse(
                 violation.getId(),
