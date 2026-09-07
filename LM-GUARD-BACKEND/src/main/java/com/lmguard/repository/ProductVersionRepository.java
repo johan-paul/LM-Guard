@@ -30,22 +30,20 @@ public interface ProductVersionRepository extends JpaRepository<ProductVersion, 
     // Product History screen (cross-product declaration change ledger)
     // ------------------------------------------------------------------
 
-    // :search CAST to string - see the identical fix + explanation in ProductRepository.search;
-    // an untyped null :search here fails every call with "function lower(bytea) does not exist".
+    Page<ProductVersion> findAllByOrderByCapturedAtDesc(Pageable pageable);
+
     @Query(value = """
             SELECT pv FROM ProductVersion pv
             JOIN FETCH pv.product p
-            WHERE (:search IS NULL
-                   OR LOWER(p.productName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
-                   OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
+            WHERE (LOWER(p.productName) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', :search, '%')))
             ORDER BY pv.capturedAt DESC
             """,
             countQuery = """
             SELECT COUNT(pv) FROM ProductVersion pv
             JOIN pv.product p
-            WHERE (:search IS NULL
-                   OR LOWER(p.productName) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%'))
-                   OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', CAST(:search AS string), '%')))
+            WHERE (LOWER(p.productName) LIKE LOWER(CONCAT('%', :search, '%'))
+                   OR LOWER(COALESCE(p.brand, '')) LIKE LOWER(CONCAT('%', :search, '%')))
             """)
     Page<ProductVersion> searchAll(@Param("search") String search, Pageable pageable);
 }

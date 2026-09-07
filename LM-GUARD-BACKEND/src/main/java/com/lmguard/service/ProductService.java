@@ -107,8 +107,16 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<Product> search(String search, String category, Pageable pageable) {
-        return productRepository.search(
-                trimToNull(search), normaliseCategory(category), pageable);
+        String cleanSearch = trimToNull(search);
+        String cleanCategory = normaliseCategory(category);
+
+        if (cleanSearch == null && cleanCategory == null) {
+            return productRepository.findAll(pageable);
+        }
+        if (cleanSearch == null) {
+            return productRepository.findByCategory(cleanCategory, pageable);
+        }
+        return productRepository.search(cleanSearch, cleanCategory, pageable);
     }
 
     /**
@@ -281,7 +289,12 @@ public class ProductService {
      */
     @Transactional(readOnly = true)
     public Page<ProductVersionEntry> historyLedger(String search, Pageable pageable) {
-        return productVersionRepository.searchAll(trimToNull(search), pageable).map(version -> {
+        String cleanSearch = trimToNull(search);
+        Page<ProductVersion> versionsPage = cleanSearch == null
+                ? productVersionRepository.findAllByOrderByCapturedAtDesc(pageable)
+                : productVersionRepository.searchAll(cleanSearch, pageable);
+
+        return versionsPage.map(version -> {
             Product product = version.getProduct();
             Optional<ProductVersion> previous = version.getVersionNumber() <= 1
                     ? Optional.empty()
