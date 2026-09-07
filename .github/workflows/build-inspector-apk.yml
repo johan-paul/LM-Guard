@@ -1,0 +1,63 @@
+name: Build inspector APK
+
+# Runs on GitHub's Linux runners on purpose: this developer's Windows machine has a host-level
+# networking issue (a VirtualBox/Docker Desktop virtual adapter interferes with the JDK's
+# AF_UNIX loopback socket) that breaks every JVM tool needing loopback IPC - Gradle's daemon
+# included - with "Unable to establish loopback connection". None of that exists here.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "LM-GUARD-Frontend/lm-guard-inspector/**"
+      - ".github/workflows/build-inspector-apk.yml"
+  workflow_dispatch:
+    inputs:
+      api_base_url:
+        description: "Backend API base URL to build against"
+        required: false
+        default: "https://lm-guard-backend.onrender.com/api"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+
+      - name: Install dependencies
+        working-directory: LM-GUARD-Frontend/lm-guard-inspector
+        run: flutter pub get
+
+      # android/ is deliberately gitignored (see its .gitignore) and recreated on demand.
+      - name: Generate the Android project
+        working-directory: LM-GUARD-Frontend/lm-guard-inspector
+        run: flutter create --platforms android .
+
+      # flutter create's template doesn't request network access, which every screen in
+      # this app needs (it's a REST client for the Spring Boot backend) - inject it.
+      - name: Add the INTERNET permission
+        working-directory: LM-GUARD-Frontend/lm-guard-inspector
+        run: |
+          sed -i 's#<manifest xmlns:android="http://schemas.android.com/apk/res/android">#<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>#' \
+            android/app/src/main/AndroidManifest.xml
+
+      - name: Build release APK
+        working-directory: LM-GUARD-Frontend/lm-guard-inspector
+        run: |
+          flutter build apk --release \
+            --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://lm-guard-backend.onrender.com/api' }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lm-guard-inspector-release-apk
+          path: LM-GUARD-Frontend/lm-guard-inspector/build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 30
