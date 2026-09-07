@@ -128,7 +128,24 @@ class ApiClient {
         contentType: contentType != null ? MediaType.parse(contentType) : null,
       );
     } else {
-      file = await http.MultipartFile.fromPath(field, filePath);
+      final String lowerPath = filePath.toLowerCase();
+      MediaType mediaType;
+      if (lowerPath.endsWith('.png')) {
+        mediaType = MediaType('image', 'png');
+      } else if (lowerPath.endsWith('.webp')) {
+        mediaType = MediaType('image', 'webp');
+      } else if (lowerPath.endsWith('.heic')) {
+        mediaType = MediaType('image', 'heic');
+      } else if (lowerPath.endsWith('.heif')) {
+        mediaType = MediaType('image', 'heif');
+      } else {
+        mediaType = MediaType('image', 'jpeg');
+      }
+      file = await http.MultipartFile.fromPath(
+        field,
+        filePath,
+        contentType: mediaType,
+      );
     }
     final http.MultipartRequest request = http.MultipartRequest('POST', uri)
       ..headers.addAll(<String, String>{

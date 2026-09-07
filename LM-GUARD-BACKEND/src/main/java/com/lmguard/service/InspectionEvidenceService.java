@@ -63,7 +63,10 @@ public class InspectionEvidenceService {
             throw new BadRequestException(ErrorCode.IMAGE_REQUIRED, "No image file was supplied");
         }
         String contentType = file.getContentType() == null ? null : file.getContentType().toLowerCase(Locale.ROOT);
-        if (contentType == null || !ALLOWED_IMAGE_TYPES.contains(contentType)) {
+        if (contentType == null || "application/octet-stream".equals(contentType)) {
+            contentType = resolveContentTypeFromFilename(file.getOriginalFilename());
+        }
+        if (!ALLOWED_IMAGE_TYPES.contains(contentType)) {
             throw new BadRequestException(ErrorCode.INVALID_IMAGE,
                     "Unsupported image type '%s'. Allowed types: %s".formatted(contentType, ALLOWED_IMAGE_TYPES));
         }
@@ -96,5 +99,15 @@ public class InspectionEvidenceService {
         if (!isAssignedInspector && !SecurityUtils.isAdmin()) {
             throw new ApiException(ErrorCode.FORBIDDEN, "Only the assigned inspector can upload evidence");
         }
+    }
+
+    private String resolveContentTypeFromFilename(String filename) {
+        if (filename == null) return "image/jpeg";
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".png")) return "image/png";
+        if (lower.endsWith(".webp")) return "image/webp";
+        if (lower.endsWith(".heic")) return "image/heic";
+        if (lower.endsWith(".heif")) return "image/heif";
+        return "image/jpeg";
     }
 }
