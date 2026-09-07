@@ -172,6 +172,12 @@ function mapViolationSummary(dto) {
     riskLevel: dto.riskLevel || 'LOW',
     status: dto.caseStatus,
     detectedAt: dto.detectedAt,
+    // Null for an absence finding (no region to point to) - real for a present-but-flawed
+    // value, e.g. MRP printed but unreadable. See ViolationCaseMapper.toSummary on the backend.
+    evidenceImageUrl: dto.evidence?.imageUrl || null,
+    boundingBox: dto.evidence
+      ? { x: dto.evidence.x, y: dto.evidence.y, width: dto.evidence.width, height: dto.evidence.height }
+      : null,
   };
 }
 
@@ -248,7 +254,10 @@ function mapProductSummary(dto) {
     violationCount: dto.violationCount ?? 0,
     openViolations: dto.openViolationCount ?? 0,
     lastInspection: dto.lastInspectionAt,
-    image: null,
+    // The most recently captured package photo for this product (backend now looks this up
+    // from that product's most recent inspection, regardless of whether it was submitted) -
+    // previously this was hardcoded null, so the registry list never showed a real thumbnail.
+    image: dto.imageUrl || null,
   };
 }
 
@@ -308,7 +317,18 @@ function mapProductDetail(productDto, historyDto, summaryDto, riskDto, violation
     violations,
     packageChanges,
     digitalListing,
-    image: null,
+    // The product's own most recent package photo (hero image), plus every evidence region the
+    // rule engine drew a box around, still pointing at that same image - a gallery of what was
+    // actually flagged, not just a single generic picture. Both were hardcoded null before.
+    image: productDto.imageUrl || null,
+    evidenceImages: violations
+      .filter((v) => v.evidenceImageUrl)
+      .map((v) => ({
+        url: v.evidenceImageUrl,
+        ruleCode: v.ruleId,
+        title: v.title,
+        boundingBox: v.boundingBox,
+      })),
   };
 }
 
@@ -439,6 +459,10 @@ export const inspectionService = {
       riskFactors: r.explanation ? [r.explanation] : [],
       previousViolations: r.previousViolations,
       lastInspection: r.assessedAt,
+      // Where the scoring inspection was carried out - lets the admin console pre-fill a
+      // follow-up inspection for this exact product without a separate lookup.
+      establishment: r.establishment,
+      address: r.address,
     }));
   },
 
@@ -464,10 +488,14 @@ export const inspectionService = {
   // (inspector name, risk band, free text) is applied client-side against the
   // mapped rows, same as the mock version did against its in-memory array.
   async getInspections(filters = {}) {
-    const { status = 'ALL', search = '', category = 'ALL', inspector = 'ALL', risk = 'ALL' } = filters;
+    const { status = 'ALL', search = '', category = 'ALL', inspector = 'ALL', risk = 'ALL', sort = 'recent' } = filters;
     const q = search.trim().toLowerCase();
 
-    const { data } = await api.get('/inspections', { params: { size: 100 } });
+    // `sort=risk` asks the backend itself to order by risk score (see GET /api/inspections'
+    // `sort` param) so a genuinely risk-prioritised queue exists for open/pending cases too, not
+    // just the retroactive "already scored high" view on the Risk Intelligence page. The other
+    // filters here still apply client-side against that same ordered set.
+    const { data } = await api.get('/inspections', { params: { size: 100, sort: sort === 'risk' ? 'risk' : undefined } });
     let rows = data.data.items.map(mapInspectionSummary);
 
     if (status !== 'ALL') rows = rows.filter((i) => i.status === status);
@@ -479,7 +507,9 @@ export const inspectionService = {
         (i) => matches(i.id, q) || matches(i.productName, q) || matches(i.manufacturer, q) || matches(i.inspector, q),
       );
     }
-    return rows.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // The backend already returned risk-sorted rows when asked; re-sorting client-side by date
+    // would undo that, so only impose the date ordering for the default case.
+    return sort === 'risk' ? rows : rows.sort((a, b) => new Date(b.date) - new Date(a.date));
   },
 
   async getInspectionById(id) {
@@ -675,6 +705,34 @@ export const inspectionService = {
     };
   },
 
+  /** Raw ruleset for one version - unlike getRules() this isn't filtered/re-shaped for the
+   * table, and carries `locked` (whether an inspection has already been judged under it), which
+   * the version-management UI needs to decide whether to show edit controls at all. */
+  async getRuleSet(version) {
+    const { data } = await api.get('/rules', { params: version ? { version } : {} });
+    return data.data;
+  },
+
+  /** Create or amend one rule within a version. Rejected with a LOCKED error if that version
+   * has already been referenced by an inspection - publish a new version instead. */
+  async upsertRule(payload) {
+    const { data } = await api.post('/rules', payload);
+    return data.data;
+  },
+
+  /** `id` is the rule row's own UUID (RuleResponse.id) - not ruleCode, which isn't unique
+   * across versions and isn't what the backend route keys on. */
+  async setRuleActive(id, active) {
+    const { data } = await api.patch(`/rules/${encodeURIComponent(id)}/active`, null, { params: { active } });
+    return data.data;
+  },
+
+  /** Clones every rule of sourceVersion into a brand-new, editable newVersion. */
+  async publishRuleset(sourceVersion, newVersion) {
+    const { data } = await api.post('/rules/publish', { sourceVersion, newVersion });
+    return data.data;
+  },
+
   async getRuleById(ruleId) {
     await delay(160);
     const rule = RULE_BY_ID[ruleId];
@@ -739,6 +797,16 @@ export const inspectionService = {
   /** Deactivating an officer disables their account outright (immediate, not just cosmetic). */
   async setInspectorStatus(id, status) {
     const { data } = await api.patch(`/inspectors/${encodeURIComponent(id)}/status`, { status });
+    return data.data;
+  },
+
+  /**
+   * There was previously no way to recover an officer's access once their one-time password
+   * from account creation was lost - the stored hash can't be reversed to show it again. This
+   * mints a brand-new one, shown once in the response the same way creation does.
+   */
+  async resetInspectorPassword(id) {
+    const { data } = await api.post(`/inspectors/${encodeURIComponent(id)}/reset-password`);
     return data.data;
   },
 

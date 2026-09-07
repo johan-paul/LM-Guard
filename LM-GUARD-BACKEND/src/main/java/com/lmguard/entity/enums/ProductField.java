@@ -21,6 +21,13 @@ public final class ProductField {
     public static final String BATCH_NUMBER = "BATCH_NUMBER";
     public static final String COMMODITY_NAME = "COMMODITY_NAME";
 
+    /** A visual observation, not a declaration - see docs on why this never gets a rule
+     * (RuleCatalog/lm-pc-2011-rules.json has none for it): whether the panel looks torn,
+     * folded, or obscured is a judgement call, and this codebase deliberately never lets the
+     * AI decide a subjective compliance question on its own (see legal-rules/RULE_REVIEW.md).
+     * Reported purely as an advisory hint the inspector can read before answering by hand. */
+    public static final String PACKAGE_CONDITION = "PACKAGE_CONDITION";
+
     /** Fields mirrored onto {@code product_versions} for change tracking. */
     public static final Set<String> VERSIONED_FIELDS =
             Set.of(MRP, NET_QUANTITY, MANUFACTURER, ORIGIN, CONSUMER_CARE);

@@ -233,6 +233,11 @@ const Map<String, String> _checklistFieldMapping = <String, String>{
   'LMPC-IDN-005': 'MANUFACTURER',
   'LMPC-ORG-004': 'ORIGIN',
   'LMPC-CHR-006': 'MANUFACTURE_DATE',
+  // Package condition is a visual judgement call (torn/folded/obscured), not a printed
+  // declaration - the AI's own note is shown as a hint, but it never sets this line's result
+  // itself (see the PACKAGE_CONDITION special case below); the officer's own tap is what's
+  // recorded either way.
+  'LMPC-FNT-012': 'PACKAGE_CONDITION',
 };
 
 /// Real backend-backed implementation. Screens never see this type directly -
@@ -467,7 +472,19 @@ class ApiInspectionRepository implements InspectionRepository {
 
   @override
   Future<ProductHistorySummary> fetchProductHistory(String productId) async {
-    final Map<String, dynamic> json = await _client.get(ApiRoutes.productInspectionSummary(productId)) as Map<String, dynamic>;
+    // Two independent backend views of the same product, fetched together: the inspection
+    // outcome counts (pass/fail history) and the raw declaration-version ledger (what the
+    // printed values actually were at each scan) - the latter was never called from this app
+    // before, so an inspector had no way to see "MRP changed from X to Y" in the field, only
+    // how many past inspections passed or failed.
+    final List<dynamic> results = await Future.wait(<Future<dynamic>>[
+      _client.get(ApiRoutes.productInspectionSummary(productId)),
+      _client.get(ApiRoutes.productHistory(productId)),
+    ]);
+
+    final Map<String, dynamic> json = results[0] as Map<String, dynamic>;
+    final Map<String, dynamic> historyJson = results[1] as Map<String, dynamic>;
+
     final List<dynamic> recent = json['recentInspections'] as List<dynamic>? ?? <dynamic>[];
     return ProductHistorySummary(
       previousInspections: json['previousInspections'] as int? ?? 0,
@@ -487,7 +504,44 @@ class ApiInspectionRepository implements InspectionRepository {
           inspectorName: r['inspectorName'] as String?,
         );
       }).toList(),
+      declarationChanges: _declarationChangesFrom(historyJson),
     );
+  }
+
+  /// The backend returns declaration snapshots newest-first with no diff of its own (that
+  /// exists only on a separate global-ledger endpoint this app doesn't use); computing it here
+  /// means comparing each snapshot against the next-older one for every tracked field, one pass
+  /// through the list.
+  List<ProductDeclarationChange> _declarationChangesFrom(Map<String, dynamic> historyJson) {
+    final List<dynamic> versions = historyJson['versions'] as List<dynamic>? ?? <dynamic>[];
+    const List<String> trackedFields = <String>['mrp', 'netQuantity', 'manufacturer', 'origin', 'consumerCare'];
+    const Map<String, String> fieldLabels = <String, String>{
+      'mrp': 'MRP',
+      'netQuantity': 'NET_QUANTITY',
+      'manufacturer': 'MANUFACTURER',
+      'origin': 'ORIGIN',
+      'consumerCare': 'CONSUMER_CARE',
+    };
+
+    final List<ProductDeclarationChange> changes = <ProductDeclarationChange>[];
+    for (int i = 0; i < versions.length - 1; i++) {
+      final Map<String, dynamic> current = versions[i] as Map<String, dynamic>;
+      final Map<String, dynamic> older = versions[i + 1] as Map<String, dynamic>;
+      final DateTime capturedAt = DateTime.tryParse(current['capturedAt'] as String? ?? '') ?? DateTime.now();
+      for (final String field in trackedFields) {
+        final String? currentValue = current[field] as String?;
+        final String? olderValue = older[field] as String?;
+        if (currentValue != olderValue) {
+          changes.add(ProductDeclarationChange(
+            field: fieldLabels[field]!,
+            previousValue: olderValue,
+            newValue: currentValue,
+            changedAt: capturedAt,
+          ));
+        }
+      }
+    }
+    return changes;
   }
 
   String _verdictLabel(String? status) {
@@ -539,11 +593,18 @@ class ApiInspectionRepository implements InspectionRepository {
             orElse: () => null,
           );
       if (violation != null) {
+        // INCONCLUSIVE means the rule engine could not read this declaration confidently
+        // enough to judge it either way - that is not the same thing as "not applicable"
+        // (which means the rule doesn't apply to this product at all, e.g. country of origin
+        // on a domestic item). Leaving it on Pending is what actually asks the officer to look
+        // - marking it Not applicable would let a genuinely uncertain MRP/manufacturer/consumer
+        // -care reading slide through unexamined, which is exactly the case that most needs a
+        // human eye.
         final bool inconclusive = violation['status'] == 'INCONCLUSIVE';
         return AiChecklistResult(
           ruleId: item.ruleRef,
           ruleName: item.title,
-          aiSuggestedStatus: inconclusive ? CheckResult.notApplicable : CheckResult.nonCompliant,
+          aiSuggestedStatus: inconclusive ? CheckResult.pending : CheckResult.nonCompliant,
           confidenceScore: (violation['decisionConfidence'] as num?)?.toDouble() ?? 0,
           explanation: violation['finding'] as String? ?? 'A possible issue was detected.',
           detectedIssue: violation['observedValue'] as String?,
@@ -554,6 +615,27 @@ class ApiInspectionRepository implements InspectionRepository {
             (Map<String, dynamic>? f) => f?['name'] == backendField,
             orElse: () => null,
           );
+
+      // Package condition never has a rule (see backend ProductField.PACKAGE_CONDITION) and so
+      // can never appear in `violations` above - it always falls through to here. That is by
+      // design: whether a panel "looks" torn or obscured is a judgement call, and this line
+      // must stay the officer's own call, with the AI's observation shown only as a hint, never
+      // as a Compliant verdict the officer could wave through without actually looking.
+      if (backendField == 'PACKAGE_CONDITION') {
+        final String? note = field?['value'] as String?;
+        return AiChecklistResult(
+          ruleId: item.ruleRef,
+          ruleName: item.title,
+          aiSuggestedStatus: CheckResult.pending,
+          confidenceScore: (field?['confidence'] as num?)?.toDouble() ?? 0,
+          explanation: note == null
+              ? 'The AI could not form an observation about the package condition from this photo.'
+              : note.toUpperCase() == 'ACCEPTABLE'
+                  ? 'AI observation: the panel appears intact and legible. Confirm by eye before recording.'
+                  : 'AI observation: $note. Confirm by eye before recording.',
+        );
+      }
+
       return AiChecklistResult(
         ruleId: item.ruleRef,
         ruleName: item.title,
@@ -602,6 +684,7 @@ class ApiInspectionRepository implements InspectionRepository {
       packageImageUrl: json['imageUrl'] as String?,
       violations: violationEvidence,
       suggestedFinalStatus: json['aiSuggestedStatus'] as String?,
+      warnings: (json['aiWarnings'] as List<dynamic>?)?.cast<String>() ?? const <String>[],
     );
   }
 

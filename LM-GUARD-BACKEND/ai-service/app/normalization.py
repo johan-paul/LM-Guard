@@ -35,6 +35,15 @@ _QUANTITY_PATTERN = re.compile(
     r"(?P<unit>kg|gm|g|mg|ml|mL|l|L|N|U|pcs|pieces|cm|mm|m)\b",
 )
 
+# The standard way a multi-component pack states its combined declaration:
+# "11.9 g + 3.6 g = 15.5 g". Matches only the value right after the "=", never a bare number -
+# this is what tells the total apart from an unrelated number elsewhere on the label (a
+# nutrition table's grams-of-carbohydrate/sugar/fat figures, for instance, are never written
+# with a leading "=").
+_QUANTITY_TOTAL_PATTERN = re.compile(
+    r"=\s*(?P<value>\d{1,7}(?:[.,]\d{1,3})?)\s*(?P<unit>kg|gm|g|mg|ml|mL|l|L|N|U|pcs|pieces|cm|mm|m)\b",
+)
+
 # MM/YYYY, Month YYYY, MM-YYYY, or plain YYYY-MM
 _DATE_PATTERN = re.compile(
     r"(?P<md>(?:0?[1-9]|1[0-2])[/\-.](?:19|20)\d{2})"
@@ -151,10 +160,50 @@ def try_regex_extract(field: str, full_text: str) -> Optional[NormalizedValue]:
     normalizer = REGEX_NORMALIZERS.get(field)
     if normalizer is None:
         return None
+
+    if field == "NET_QUANTITY":
+        return _best_quantity(full_text, normalizer)
+
     for line in full_text.splitlines():
         result = normalizer(line)
         if result.normalized is not None:
             return result
     # Some fields (date, quantity) occasionally split across OCR line breaks; try the whole
     # blob as a last resort.
+    return normalizer(full_text)
+
+
+def _best_quantity(full_text: str, normalizer) -> Optional[NormalizedValue]:
+    """A multi-component pack ("11.9 g + 3.6 g = 15.5 g") declares each part's quantity as well
+    as the total; Rule 6(1)(c) requires the *total*. Returning the first line's match (as every
+    other field above does) grabs a component instead, because OCR usually reads a declaration
+    like that as more than one line/block.
+
+    An earlier version of this function picked the *largest* number+unit match anywhere in the
+    OCR text on the theory that the total is always the biggest figure in the declaration - true
+    within the declaration itself, but not safe across the *whole* label: a nutrition table a
+    few lines below (carbohydrate/sugar/fat, all given in grams) can easily contain a number
+    larger than the true net quantity, and got wrongly preferred over it. Looking specifically
+    for the "= <value> <unit>" total notation is unambiguous - nothing else on a label is
+    written that way - and only falling back to the plain first-match behaviour (identical to
+    every other regex field) when no such total is present keeps the ordinary single-quantity
+    case exactly as reliable as before.
+    """
+    for line in full_text.splitlines():
+        total_match = _QUANTITY_TOTAL_PATTERN.search(line)
+        if total_match:
+            value = total_match.group("value").replace(",", ".")
+            unit = total_match.group("unit")
+            return NormalizedValue(raw_text=line, normalized=f"{value} {unit}", unit=unit, pattern_confidence=0.9)
+
+    total_match = _QUANTITY_TOTAL_PATTERN.search(full_text)
+    if total_match:
+        value = total_match.group("value").replace(",", ".")
+        unit = total_match.group("unit")
+        return NormalizedValue(raw_text=full_text, normalized=f"{value} {unit}", unit=unit, pattern_confidence=0.9)
+
+    for line in full_text.splitlines():
+        result = normalizer(line)
+        if result.normalized is not None:
+            return result
     return normalizer(full_text)

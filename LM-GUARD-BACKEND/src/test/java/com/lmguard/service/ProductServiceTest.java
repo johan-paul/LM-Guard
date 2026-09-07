@@ -19,6 +19,8 @@ import com.lmguard.repository.ProductRepository;
 import com.lmguard.repository.ProductVersionRepository;
 import com.lmguard.repository.RiskScoreRepository;
 import com.lmguard.repository.ViolationRepository;
+import com.lmguard.ai.AIAnalysisService;
+import com.lmguard.storage.FileStorageService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -58,13 +60,15 @@ class ProductServiceTest {
     @Mock private OnlineListingRepository onlineListingRepository;
     @Mock private InspectionMapper inspectionMapper;
     @Mock private ViolationCaseMapper violationCaseMapper;
+    @Mock private AIAnalysisService aiAnalysisService;
+    @Mock private FileStorageService fileStorageService;
 
     private final ProductMapper productMapper = new ProductMapper();
 
     private ProductService service() {
         return new ProductService(productRepository, productVersionRepository, inspectionRepository,
                 violationRepository, riskScoreRepository, onlineListingRepository, productMapper,
-                inspectionMapper, violationCaseMapper);
+                inspectionMapper, violationCaseMapper, aiAnalysisService, fileStorageService);
     }
 
     private Product product(UUID id) {

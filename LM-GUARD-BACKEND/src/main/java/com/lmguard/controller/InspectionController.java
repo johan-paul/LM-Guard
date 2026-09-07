@@ -137,17 +137,29 @@ public class InspectionController {
     }
 
     @GetMapping
-    @Operation(summary = "List and filter inspections")
+    @Operation(summary = "List and filter inspections",
+            description = """
+                    `sort=risk` orders by the inspection's own risk score, highest first (ties
+                    broken by most recent) - this is what makes a risk-based inspection queue
+                    possible: an admin can see which of the *open* cases to prioritise, not just
+                    which already-scored products rank highest after the fact. Omit for the
+                    default, most-recent-first ordering.
+                    """)
     public ResponseEntity<ApiResponse<PageResponse<InspectionSummaryResponse>>> list(
             @Parameter(description = "Filter by status") @RequestParam(required = false) InspectionStatus status,
             @Parameter(description = "Filter by product") @RequestParam(required = false) UUID productId,
             @Parameter(description = "Filter by inspector") @RequestParam(required = false) UUID inspectorId,
             @Parameter(description = "Filter by zone") @RequestParam(required = false) UUID zoneId,
+            @Parameter(description = "'risk' to sort by risk score descending; omit for most-recent-first")
+            @RequestParam(required = false) String sort,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
 
+        Sort order = "risk".equalsIgnoreCase(sort)
+                ? Sort.by(Sort.Direction.DESC, "riskScore").and(Sort.by(Sort.Direction.DESC, "createdAt"))
+                : Sort.by(Sort.Direction.DESC, "createdAt");
         var results = inspectionService.search(status, productId, inspectorId, zoneId,
-                PageRequest.of(page, Math.min(size, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
+                PageRequest.of(page, Math.min(size, 100), order));
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(results, inspectionMapper::toSummary)));
     }
 

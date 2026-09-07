@@ -86,6 +86,7 @@ class AIEvaluation {
     this.packageImageUrl,
     this.violations = const <AiViolationEvidence>[],
     this.suggestedFinalStatus,
+    this.warnings = const <String>[],
   });
 
   final String inspectionId;
@@ -115,6 +116,15 @@ class AIEvaluation {
   /// evidence region - this is what the Evidence step renders. The AI/rule
   /// engine produces this; nothing here is captured by the officer.
   final List<AiViolationEvidence> violations;
+
+  /// Non-fatal problems from this specific analysis run worth telling the
+  /// officer about directly - most importantly the semantic (VLM) step being
+  /// unavailable (rate-limited, quota exhausted, network failure), in which
+  /// case free-text fields like manufacturer name could not be identified at
+  /// all and every other field fell back to OCR pattern matching only. That
+  /// is a materially weaker result than usual, not a random accuracy dip, so
+  /// it must not be silent.
+  final List<String> warnings;
 
   int get flaggedCount =>
       checklistResults.where((AiChecklistResult r) => r.aiSuggestedStatus == CheckResult.nonCompliant).length;

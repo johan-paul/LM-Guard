@@ -183,6 +183,55 @@ class _Content extends StatelessWidget {
             ],
           ),
         ),
+        if (summary.declarationChanges.isNotEmpty) ...<Widget>[
+          const SizedBox(height: 16),
+          const Text('DECLARATION CHANGES', style: AppText.label),
+          const SizedBox(height: 4),
+          const Text(
+            'What was actually printed on the package changed between scans - not just whether '
+            'past inspections passed or failed.',
+            style: AppText.caption,
+          ),
+          const SizedBox(height: 8),
+          ...summary.declarationChanges.take(8).map(
+                (ProductDeclarationChange change) => AppPanel(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(change.field, style: AppText.identifier),
+                            const SizedBox(height: 4),
+                            Text.rich(
+                              TextSpan(
+                                children: <InlineSpan>[
+                                  TextSpan(
+                                    text: change.previousValue ?? 'not detected',
+                                    style: AppText.caption.copyWith(
+                                      decoration: TextDecoration.lineThrough,
+                                      color: AppColors.inkFaint,
+                                    ),
+                                  ),
+                                  const TextSpan(text: '  →  ', style: AppText.caption),
+                                  TextSpan(
+                                    text: change.newValue ?? 'not detected',
+                                    style: AppText.body.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(Fmt.dayTime(change.changedAt), style: AppText.caption),
+                    ],
+                  ),
+                ),
+              ),
+        ],
         if (summary.recentInspections.isNotEmpty) ...<Widget>[
           const SizedBox(height: 16),
           const Text('RECENT INSPECTIONS', style: AppText.label),

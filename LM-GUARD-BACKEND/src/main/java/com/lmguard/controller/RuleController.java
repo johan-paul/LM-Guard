@@ -1,6 +1,7 @@
 package com.lmguard.controller;
 
 import com.lmguard.common.ApiResponse;
+import com.lmguard.dto.rule.RulePublishRequest;
 import com.lmguard.dto.rule.RuleResponse;
 import com.lmguard.dto.rule.RuleSetResponse;
 import com.lmguard.dto.rule.RuleUpsertRequest;
@@ -60,6 +61,22 @@ public class RuleController {
                     """)
     public ResponseEntity<ApiResponse<RuleResponse>> upsert(@Valid @RequestBody RuleUpsertRequest request) {
         return ResponseEntity.ok(ApiResponse.success("Rule saved", ruleAdminService.upsert(request)));
+    }
+
+    @PostMapping("/publish")
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Publish a new ruleset version by cloning an existing one", description = """
+                    ADMIN only. Copies every rule from `sourceVersion` into a brand-new
+                    `newVersion`, which starts fully editable via `POST /api/rules` - amend
+                    whichever rules actually changed, leave the rest as cloned. The new version
+                    becomes immutable itself only once an inspection is judged under it.
+
+                    This is the intended way to change how inspections are judged: publish a new
+                    version rather than editing an active one, since completed inspections
+                    reference the exact version they were judged under.
+                    """)
+    public ResponseEntity<ApiResponse<RuleSetResponse>> publish(@Valid @RequestBody RulePublishRequest request) {
+        return ResponseEntity.ok(ApiResponse.success("Ruleset version published", ruleAdminService.publish(request)));
     }
 
     @PatchMapping("/{id}/active")

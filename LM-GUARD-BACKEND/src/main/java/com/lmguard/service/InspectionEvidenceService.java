@@ -9,6 +9,7 @@ import com.lmguard.exception.BadRequestException;
 import com.lmguard.exception.ErrorCode;
 import com.lmguard.mapper.InspectionEvidenceMapper;
 import com.lmguard.repository.InspectionEvidenceRepository;
+import com.lmguard.repository.UserRepository;
 import com.lmguard.security.SecurityUtils;
 import com.lmguard.storage.FileStorageService;
 import com.lmguard.storage.StoredFile;
@@ -42,6 +43,7 @@ public class InspectionEvidenceService {
     private final InspectionService inspectionService;
     private final FileStorageService fileStorageService;
     private final InspectionEvidenceMapper inspectionEvidenceMapper;
+    private final UserRepository userRepository;
 
     @Transactional(readOnly = true)
     public List<InspectionEvidenceResponse> list(UUID inspectionId) {
@@ -77,6 +79,7 @@ public class InspectionEvidenceService {
 
         InspectionEvidence saved = inspectionEvidenceRepository.save(InspectionEvidence.builder()
                 .inspection(inspection)
+                .capturedBy(userRepository.findById(callerId).orElse(null))
                 .imageUrl(stored.url())
                 .imagePath(stored.path())
                 .label(label)

@@ -36,6 +36,14 @@ public class InspectionMapper {
                                          List<ExtractedField> fields,
                                          List<Violation> violations,
                                          RiskScore riskScore) {
+        return toResponse(inspection, fields, violations, riskScore, List.of());
+    }
+
+    public InspectionResponse toResponse(Inspection inspection,
+                                         List<ExtractedField> fields,
+                                         List<Violation> violations,
+                                         RiskScore riskScore,
+                                         List<String> aiWarnings) {
 
         Map<String, ComplianceStatus> statusByField = fieldStatuses(violations);
 
@@ -66,6 +74,7 @@ public class InspectionMapper {
                 inspection.getRiskLevel(),
                 inspection.getRulesetVersion(),
                 inspection.getAiProvider(),
+                aiWarnings == null ? List.of() : aiWarnings,
                 inspection.getImageUrl(),
                 productMapper.toResponse(inspection.getProduct()),
                 inspection.getInspector() == null ? null : inspection.getInspector().getId(),

@@ -26,6 +26,14 @@ public record HighRiskProductResponse(
         Instant assessedAt,
 
         @Schema(description = "Count of this product's prior substantiated (non-compliant) inspections", example = "3")
-        long previousViolations
+        long previousViolations,
+
+        @Schema(description = "Establishment the scoring inspection was carried out at - lets an admin "
+                + "pre-fill a follow-up inspection for this product without looking it up separately",
+                example = "SunFresh Retail Outlet")
+        String establishment,
+
+        @Schema(description = "Address of that establishment")
+        String address
 ) {
 }

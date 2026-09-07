@@ -84,6 +84,20 @@ public class InspectorController {
         return ResponseEntity.ok(ApiResponse.success("Inspector updated", inspectorService.update(officerCode, request)));
     }
 
+    @PostMapping("/{officerCode}/reset-password")
+    @Operation(summary = "Reset an inspector's password",
+            description = """
+                    Issues a brand-new generated password and invalidates the old one
+                    immediately. There was previously no way to recover access once the
+                    one-time password shown at account creation was lost or forgotten - the
+                    stored hash cannot be reversed, so this mints a fresh password rather than
+                    revealing the old one. The response's `temporaryPassword` is shown once,
+                    exactly like creation - hand it to the officer directly.
+                    """)
+    public ResponseEntity<ApiResponse<InspectorResponse>> resetPassword(@PathVariable String officerCode) {
+        return ResponseEntity.ok(ApiResponse.success("Password reset", inspectorService.resetPassword(officerCode)));
+    }
+
     @PatchMapping("/{officerCode}/status")
     @Operation(summary = "Activate or deactivate an inspector",
             description = "Deactivating disables the account outright - the officer loses field-app access immediately.")

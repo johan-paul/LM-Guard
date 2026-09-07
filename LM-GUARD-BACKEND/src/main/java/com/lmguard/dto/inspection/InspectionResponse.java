@@ -47,6 +47,14 @@ public record InspectionResponse(
         @Schema(description = "Which AI implementation produced the facts", example = "MOCK")
         String aiProvider,
 
+        @Schema(description = "Non-fatal problems from the most recent /analyze run worth "
+                + "showing the inspector directly - e.g. the semantic (VLM) step being "
+                + "unavailable, so free-text fields like manufacturer name could not be read "
+                + "and the result fell back to OCR pattern matching only. Empty outside of a "
+                + "fresh analyze() call; not persisted, since it describes that run, not the "
+                + "inspection as a whole.")
+        List<String> aiWarnings,
+
         @Schema(description = "URL of the package image under inspection")
         String imageUrl,
 

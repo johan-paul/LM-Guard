@@ -11,7 +11,9 @@ import com.lmguard.mapper.AssignmentHistoryMapper;
 import com.lmguard.mapper.InspectionMapper;
 import com.lmguard.repository.AssignmentHistoryRepository;
 import com.lmguard.repository.ChecklistEntryRepository;
+import com.lmguard.repository.EvidenceRepository;
 import com.lmguard.repository.ExtractedFieldRepository;
+import com.lmguard.repository.InspectionEvidenceRepository;
 import com.lmguard.repository.InspectionRepository;
 import com.lmguard.repository.RiskScoreRepository;
 import com.lmguard.repository.UserRepository;
@@ -66,6 +68,8 @@ class InspectionCreateEntryPointsTest {
     @Mock private UserRepository userRepository;
     @Mock private AssignmentHistoryRepository assignmentHistoryRepository;
     @Mock private ChecklistEntryRepository checklistEntryRepository;
+    @Mock private EvidenceRepository evidenceRepository;
+    @Mock private InspectionEvidenceRepository inspectionEvidenceRepository;
     @Mock private ProductService productService;
     @Mock private ZoneService zoneService;
     @Mock private FileStorageService fileStorageService;
@@ -81,6 +85,7 @@ class InspectionCreateEntryPointsTest {
     void setUp() {
         service = new InspectionService(inspectionRepository, extractedFieldRepository, violationRepository,
                 riskScoreRepository, userRepository, assignmentHistoryRepository, checklistEntryRepository,
+                evidenceRepository, inspectionEvidenceRepository,
                 productService, zoneService, fileStorageService, evidenceService, analysisService, statusWriter,
                 inspectionMapper, assignmentHistoryMapper);
 

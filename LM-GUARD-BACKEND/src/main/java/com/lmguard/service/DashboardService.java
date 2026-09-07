@@ -145,7 +145,9 @@ public class DashboardService {
                 score.getRiskLevel(),
                 score.getExplanation(),
                 score.getCreatedAt(),
-                previousViolations);
+                previousViolations,
+                score.getInspection() == null ? null : score.getInspection().getEstablishment(),
+                score.getInspection() == null ? null : score.getInspection().getAddress());
     }
 
     private List<DashboardStatisticsResponse.RuleBreachCount> topRules() {

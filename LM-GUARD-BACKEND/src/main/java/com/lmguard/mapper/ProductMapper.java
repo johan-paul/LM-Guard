@@ -10,6 +10,10 @@ import org.springframework.stereotype.Component;
 public class ProductMapper {
 
     public ProductResponse toResponse(Product product) {
+        return toResponse(product, null);
+    }
+
+    public ProductResponse toResponse(Product product, String imageUrl) {
         if (product == null) {
             return null;
         }
@@ -20,7 +24,8 @@ public class ProductMapper {
                 product.getCategory(),
                 product.getBarcode(),
                 product.getCreatedAt(),
-                product.getUpdatedAt()
+                product.getUpdatedAt(),
+                imageUrl
         );
     }
 

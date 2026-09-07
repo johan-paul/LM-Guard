@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AlertCircle, ArrowRight, Loader2, MapPin, UserCheck } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { AlertCircle, ArrowRight, Loader2, MapPin, Radar, UserCheck } from 'lucide-react';
 
 import PageHeader from '../components/PageHeader';
 import EmptyState from '../components/EmptyState';
@@ -28,14 +28,22 @@ const PRIORITIES = [
  */
 export default function NewInspection() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Arriving from the Risk Intelligence queue's "Create follow-up inspection" action pre-fills
+  // this form with the flagged product and where it was last seen, rather than making the admin
+  // look that up again by hand - see RiskIntelligence.jsx.
+  const prefill = location.state?.prefillFromRisk || null;
 
   // Inspection details
-  const [establishment, setEstablishment] = useState('');
-  const [address, setAddress] = useState('');
-  const [inspectionType, setInspectionType] = useState('ROUTINE');
-  const [priority, setPriority] = useState('MEDIUM');
+  const [establishment, setEstablishment] = useState(prefill?.establishment || '');
+  const [address, setAddress] = useState(prefill?.address || '');
+  const [inspectionType, setInspectionType] = useState(prefill ? 'FOLLOW_UP' : 'ROUTINE');
+  const [priority, setPriority] = useState(prefill ? 'HIGH' : 'MEDIUM');
   const [dueDate, setDueDate] = useState('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(
+    prefill ? `Follow-up on a risk-queue flag: ${prefill.productName} (score ${prefill.riskScore}).` : '',
+  );
 
   // Assignment
   const [zones, setZones] = useState([]);
@@ -124,6 +132,7 @@ export default function NewInspection() {
     setSubmitting(true);
     try {
       const created = await inspectionService.createAssignedInspection({
+        productId: prefill?.productId || undefined,
         establishment: establishment.trim(),
         address: address.trim() || undefined,
         inspectionType,
@@ -147,6 +156,17 @@ export default function NewInspection() {
         title="New Inspection"
         subtitle="Open a case and assign it to an inspector. Product identification, image capture and AI analysis happen in the field application once the inspector opens their assignment."
       />
+
+      {prefill && (
+        <div className="flex items-start gap-3 rounded-xl border border-warning-100 bg-warning-50 px-5 py-3.5">
+          <Radar className="mt-0.5 h-4 w-4 shrink-0 text-warning-700" strokeWidth={1.9} />
+          <p className="text-13 text-warning-700">
+            <span className="font-semibold">From the risk queue.</span> Pre-filled to re-check{' '}
+            <span className="font-semibold">{prefill.productName}</span> (risk score {prefill.riskScore}) at the
+            establishment it was last flagged at - the fields below are still fully editable.
+          </p>
+        </div>
+      )}
 
       {submitError && (
         <div className="flex items-start gap-3 rounded-xl border border-danger-100 bg-danger-50 px-5 py-3.5">

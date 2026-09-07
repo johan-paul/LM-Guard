@@ -18,6 +18,8 @@ public class InspectionEvidenceMapper {
                 item.getImagePath(),
                 item.getLabel(),
                 item.getDescription(),
-                item.getCapturedAt());
+                item.getCapturedAt(),
+                item.getCapturedBy() == null ? null : item.getCapturedBy().getId(),
+                item.getCapturedBy() == null ? null : item.getCapturedBy().getName());
     }
 }

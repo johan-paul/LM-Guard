@@ -1,5 +1,6 @@
 package com.lmguard.dto.violation;
 
+import com.lmguard.dto.inspection.EvidenceResponse;
 import com.lmguard.entity.enums.RiskLevel;
 import com.lmguard.entity.enums.Severity;
 import com.lmguard.entity.enums.ViolationCaseStatus;
@@ -41,6 +42,10 @@ public record ViolationSummaryResponse(
         @Schema(description = "Inspector case-management state")
         ViolationCaseStatus caseStatus,
 
-        Instant detectedAt
+        Instant detectedAt,
+
+        @Schema(description = "The image region that produced this finding, if the rule engine "
+                + "located one - null for an absence finding (nothing to point a rectangle at)")
+        EvidenceResponse evidence
 ) {
 }

@@ -10,6 +10,8 @@ public record InspectionEvidenceResponse(
         String imagePath,
         String label,
         String description,
-        Instant capturedAt
+        Instant capturedAt,
+        UUID capturedById,
+        String capturedByName
 ) {
 }

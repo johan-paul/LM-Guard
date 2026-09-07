@@ -178,7 +178,7 @@ public class InspectionAnalysisService {
                 inspectionId, inspection.getAiSuggestedStatus(), risk.totalScore(), risk.riskLevel(),
                 compliance.rulesetVersion(), analysis.provider(), violations.size());
 
-        return inspectionMapper.toResponse(inspection, fields, violations, riskScore);
+        return inspectionMapper.toResponse(inspection, fields, violations, riskScore, analysis.warnings());
     }
 
     // ------------------------------------------------------------------
@@ -270,6 +270,16 @@ public class InspectionAnalysisService {
             return "Region of the package image examined for '%s' under rule %s. Observed value: %s"
                     .formatted(finding.fieldName(), finding.ruleCode(),
                             finding.observedValue() == null ? "none" : finding.observedValue());
+        }
+        // No box does not always mean nothing was read: the AI/OCR layer can recognise a value
+        // (e.g. from the vision model's own reading) without being able to match it back to a
+        // specific OCR text region on the image - two different situations that read very
+        // differently to an inspector and must not share one message.
+        if (finding.observedValue() != null && !finding.observedValue().isBlank()) {
+            return ("Declaration '%s' was read as '%s' under rule %s, but its exact position on "
+                    + "the package image could not be pinpointed. Manual verification of its "
+                    + "location is required.")
+                    .formatted(finding.fieldName(), finding.observedValue(), finding.ruleCode());
         }
         return "No region of the package image was found to contain '%s'. Rule %s was evaluated "
                 .formatted(finding.fieldName(), finding.ruleCode())

@@ -11,15 +11,23 @@ import com.lmguard.dto.product.ProductSummaryResponse;
 import com.lmguard.dto.product.ProductVersionEntry;
 import com.lmguard.dto.product.ProductVersionResponse;
 import com.lmguard.dto.violation.ViolationSummaryResponse;
+import com.lmguard.ai.AIAnalysisResult;
+import com.lmguard.ai.AIAnalysisService;
+import com.lmguard.ai.ExtractedFact;
+import com.lmguard.config.properties.StorageProperties;
 import com.lmguard.entity.Inspection;
+import com.lmguard.entity.OnlineListing;
 import com.lmguard.entity.Product;
 import com.lmguard.entity.ProductVersion;
 import com.lmguard.entity.RiskScore;
 import com.lmguard.entity.enums.InspectionStatus;
+import com.lmguard.entity.enums.ProductField;
 import com.lmguard.entity.enums.RiskLevel;
 import com.lmguard.entity.enums.VersionSource;
 import com.lmguard.entity.enums.ViolationCaseStatus;
 import com.lmguard.entity.enums.ViolationStatus;
+import com.lmguard.exception.AiServiceException;
+import com.lmguard.exception.BadRequestException;
 import com.lmguard.exception.ErrorCode;
 import com.lmguard.exception.ResourceNotFoundException;
 import com.lmguard.mapper.InspectionMapper;
@@ -31,18 +39,26 @@ import com.lmguard.repository.ProductRepository;
 import com.lmguard.repository.ProductVersionRepository;
 import com.lmguard.repository.RiskScoreRepository;
 import com.lmguard.repository.ViolationRepository;
+import com.lmguard.storage.FileStorageService;
+import com.lmguard.storage.StoredFile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -70,6 +86,11 @@ public class ProductService {
     private final ProductMapper productMapper;
     private final InspectionMapper inspectionMapper;
     private final ViolationCaseMapper violationCaseMapper;
+    private final AIAnalysisService aiAnalysisService;
+    private final FileStorageService fileStorageService;
+
+    private static final Set<String> ALLOWED_LISTING_IMAGE_TYPES =
+            Set.of("image/jpeg", "image/jpg", "image/png", "image/webp");
 
     @Transactional
     public ProductResponse create(ProductCreateRequest request) {
@@ -119,7 +140,13 @@ public class ProductService {
                 latest == null ? null : latest.getRiskLevel(),
                 violationRepository.countByInspection_Product_IdAndStatus(id, ViolationStatus.NON_COMPLIANT),
                 violationRepository.countByInspection_Product_IdAndCaseStatusIn(id, OPEN_CASE_STATUSES),
-                inspectionRepository.findLatestCompletedAt(id));
+                inspectionRepository.findLatestCompletedAt(id),
+                latestImageUrl(id));
+    }
+
+    private String latestImageUrl(UUID productId) {
+        List<String> urls = inspectionRepository.findRecentImageUrls(productId, PageRequest.of(0, 1));
+        return urls.isEmpty() ? null : urls.get(0);
     }
 
     /**
@@ -175,6 +202,77 @@ public class ProductService {
     }
 
     /**
+     * Records an online-marketplace listing by reading it off a screenshot, the same way a
+     * package photo is read - OCR + the semantic (VLM) extraction step, through the exact same
+     * AI service - rather than requiring someone to retype the price and quantity into a form
+     * by hand. This is what actually populates {@link OnlineListingRepository}, which until now
+     * had no writer at all: {@link com.lmguard.service.InspectionAnalysisService#detectOnlineMismatch}
+     * already compares the most recent listing against the package's own OCR reading, but that
+     * comparison could never fire because nothing ever created a listing to compare against.
+     *
+     * <p>The AI layer's prompt is worded for a package photograph; a listing screenshot is a
+     * different kind of image (a price on a webpage, not a printed label), so extraction quality
+     * here is not guaranteed to match the package pipeline's - this is a reasonable reuse of the
+     * same OCR/VLM capability, not a purpose-built listing scraper.
+     */
+    @Transactional
+    public OnlineListingResponse captureOnlineListing(UUID productId, MultipartFile file, String source, String listingUrl) {
+        Product product = requireById(productId);
+
+        if (file == null || file.isEmpty()) {
+            throw new BadRequestException(ErrorCode.IMAGE_REQUIRED, "No listing screenshot was supplied");
+        }
+        if (source == null || source.isBlank()) {
+            throw new BadRequestException("source is required, e.g. AMAZON, FLIPKART");
+        }
+        String contentType = file.getContentType() == null ? null : file.getContentType().toLowerCase(Locale.ROOT);
+        if (contentType == null || !ALLOWED_LISTING_IMAGE_TYPES.contains(contentType)) {
+            throw new BadRequestException(ErrorCode.INVALID_IMAGE,
+                    "Unsupported image type '%s'. Allowed types: %s".formatted(contentType, ALLOWED_LISTING_IMAGE_TYPES));
+        }
+
+        byte[] bytes;
+        try {
+            bytes = file.getBytes();
+        } catch (IOException ex) {
+            throw new BadRequestException(ErrorCode.INVALID_IMAGE, "Could not read the uploaded image");
+        }
+
+        StoredFile stored = fileStorageService.upload(
+                StorageProperties.ONLINE_LISTINGS, bytes, file.getOriginalFilename(), contentType);
+
+        AIAnalysisResult analysis;
+        try {
+            // No real Inspection backs this call - a fresh id is generated purely for the AI
+            // service's own request logging/correlation, the same role inspectionId plays there.
+            analysis = aiAnalysisService.analyzeImage(stored.url(), UUID.randomUUID());
+        } catch (AiServiceException ex) {
+            throw new BadRequestException(ErrorCode.AI_SERVICE_ERROR,
+                    "Could not read the listing screenshot: " + ex.getMessage());
+        }
+
+        OnlineListing listing = onlineListingRepository.save(OnlineListing.builder()
+                .product(product)
+                .source(source.trim().toUpperCase(Locale.ROOT))
+                .listingUrl(trimToNull(listingUrl))
+                .mrp(presentValue(analysis, ProductField.MRP))
+                .quantity(presentValue(analysis, ProductField.NET_QUANTITY))
+                .manufacturer(presentValue(analysis, ProductField.MANUFACTURER))
+                .capturedAt(Instant.now())
+                .build());
+
+        log.info("Captured online listing for product {} from {} (mrp={}, quantity={})",
+                productId, listing.getSource(), listing.getMrp(), listing.getQuantity());
+
+        return new OnlineListingResponse(listing.getSource(), listing.getListingUrl(), listing.getMrp(),
+                listing.getQuantity(), listing.getManufacturer(), listing.getOrigin(), listing.getCapturedAt());
+    }
+
+    private String presentValue(AIAnalysisResult analysis, String field) {
+        return analysis.fact(field).filter(ExtractedFact::isPresent).map(ExtractedFact::value).orElse(null);
+    }
+
+    /**
      * The Product History screen's cross-product declaration-change ledger, newest first. Every
      * snapshot is a real change record (a version is only ever written when a declared value
      * actually differs, per {@link #recordVersionIfChanged}) - there is no compliance-verdict
@@ -211,7 +309,8 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public ProductResponse getById(UUID id) {
-        return productMapper.toResponse(requireById(id));
+        Product product = requireById(id);
+        return productMapper.toResponse(product, latestImageUrl(id));
     }
 
     @Transactional(readOnly = true)

@@ -20,6 +20,7 @@ public record StorageProperties(
     public static final String PACKAGE_IMAGES = "package-images";
     public static final String EVIDENCE = "evidence";
     public static final String REPORTS = "reports";
+    public static final String ONLINE_LISTINGS = "online-listings";
 
     public StorageProperties {
         if (provider == null || provider.isBlank()) {

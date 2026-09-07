@@ -23,6 +23,14 @@ public class ViolationCaseMapper {
 
     public ViolationSummaryResponse toSummary(Violation v) {
         Inspection inspection = v.getInspection();
+        // Only the first evidence region, not the full list toDetail() carries - a summary row
+        // (the case queue, or a product's violation list) needs just enough to draw one
+        // rectangle on a thumbnail, not the complete evidence trail a violation's own detail
+        // page shows.
+        EvidenceResponse evidence = v.getEvidence() == null || v.getEvidence().isEmpty()
+                ? null
+                : evidenceMapper.toResponse(v.getEvidence().get(0));
+
         return new ViolationSummaryResponse(
                 v.getId(),
                 inspection == null ? null : inspection.getId(),
@@ -37,7 +45,8 @@ public class ViolationCaseMapper {
                 inspection == null ? null : inspection.getRiskLevel(),
                 v.getStatus(),
                 v.getCaseStatus(),
-                v.getCreatedAt());
+                v.getCreatedAt(),
+                evidence);
     }
 
     public ViolationDetailResponse toDetail(Violation v, List<Violation> relatedCases) {

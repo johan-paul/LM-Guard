@@ -20,6 +20,26 @@ class PreviousInspectionEntry {
   final int violationCount;
 }
 
+/// One printed declaration that read differently between two consecutive scans of the same
+/// product - e.g. the MRP going from "₹85.00" to "₹99.00". Computed client-side from the
+/// product's version snapshots (newest first): each entry compares one snapshot's value for
+/// `field` against the next-older snapshot's value for the same field.
+class ProductDeclarationChange {
+  const ProductDeclarationChange({
+    required this.field,
+    required this.previousValue,
+    required this.newValue,
+    required this.changedAt,
+  });
+
+  /// Matches the backend's ProductField constants: MRP, NET_QUANTITY, MANUFACTURER, ORIGIN,
+  /// CONSUMER_CARE.
+  final String field;
+  final String? previousValue;
+  final String? newValue;
+  final DateTime changedAt;
+}
+
 /// Aggregated inspection/violation history for the product under inspection -
 /// what the Product History step shows before the inspector records their own
 /// findings. Complaint history is not tracked anywhere in this system yet
@@ -35,6 +55,7 @@ class ProductHistorySummary {
     required this.repeatViolations,
     this.riskLevel,
     this.recentInspections = const <PreviousInspectionEntry>[],
+    this.declarationChanges = const <ProductDeclarationChange>[],
   });
 
   final int previousInspections;
@@ -45,6 +66,10 @@ class ProductHistorySummary {
   final int repeatViolations;
   final String? riskLevel;
   final List<PreviousInspectionEntry> recentInspections;
+
+  /// What actually changed between scans - "MRP was ₹85.00, now ₹99.00" - not just how many
+  /// past inspections passed or failed. Newest change first.
+  final List<ProductDeclarationChange> declarationChanges;
 
   bool get hasRepeatIssue => repeatViolations > 0;
 

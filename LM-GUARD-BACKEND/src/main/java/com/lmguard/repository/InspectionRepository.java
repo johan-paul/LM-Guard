@@ -17,6 +17,11 @@ import java.util.UUID;
 @Repository
 public interface InspectionRepository extends JpaRepository<Inspection, UUID> {
 
+    /** True once any inspection has been judged under this ruleset version - the point past
+     * which its rules must be treated as immutable, since editing them in place would silently
+     * rewrite what an already-recorded verdict was actually judged against. */
+    boolean existsByRulesetVersion(String rulesetVersion);
+
     /** Loads the aggregate needed to render a full inspection result in one round trip. */
     @Query("""
             SELECT DISTINCT i FROM Inspection i
@@ -101,6 +106,18 @@ public interface InspectionRepository extends JpaRepository<Inspection, UUID> {
                                com.lmguard.entity.enums.InspectionStatus.INCONCLUSIVE)
             """)
     Instant findLatestCompletedAt(@Param("productId") UUID productId);
+
+    /** The most recent package photo captured for this product, regardless of whether that
+     * inspection was ever submitted - a photo exists as soon as it's uploaded, independent of
+     * completion status, so gating this to completed inspections (like {@link #findLatestCompletedAt})
+     * would hide the image on every still-in-progress case. Pass a single-row {@link Pageable}
+     * (e.g. {@code PageRequest.of(0, 1)}) to get just the latest. */
+    @Query("""
+            SELECT i.imageUrl FROM Inspection i
+            WHERE i.product.id = :productId AND i.imageUrl IS NOT NULL
+            ORDER BY i.createdAt DESC
+            """)
+    List<String> findRecentImageUrls(@Param("productId") UUID productId, org.springframework.data.domain.Pageable pageable);
 
     @Query("SELECT i.status, COUNT(i) FROM Inspection i GROUP BY i.status")
     List<Object[]> countGroupedByStatus();

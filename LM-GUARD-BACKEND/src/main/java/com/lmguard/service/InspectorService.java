@@ -181,6 +181,25 @@ public class InspectorService {
         return toResponse(profile, null, false);
     }
 
+    /**
+     * Issues a brand-new temporary password for an officer who is locked out - there was
+     * previously no way to do this at all once the one-time password shown at creation was
+     * lost: the hash is one-way, so nothing could recover or display the original. This mints
+     * a fresh one the same way {@link #create} does and shows it once, exactly like creation.
+     */
+    @Transactional
+    public InspectorResponse resetPassword(String officerCode) {
+        InspectorProfile profile = requireByCode(officerCode);
+        User user = profile.getUser();
+
+        String temporaryPassword = generateTemporaryPassword();
+        user.setPasswordHash(passwordEncoder.encode(temporaryPassword));
+        userRepository.save(user);
+
+        log.info("Password reset for inspector {} by an administrator", officerCode);
+        return toResponse(profile, temporaryPassword, false);
+    }
+
     /** Called on successful login so "last active" reflects real sign-ins. */
     @Transactional
     public void recordLogin(java.util.UUID userId) {

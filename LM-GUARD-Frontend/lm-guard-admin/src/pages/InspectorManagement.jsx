@@ -13,6 +13,7 @@ import {
   Phone,
   Loader2,
   AlertCircle,
+  KeyRound,
 } from 'lucide-react';
 
 import PageHeader from '../components/PageHeader';
@@ -112,6 +113,16 @@ export default function InspectorManagement() {
       await inspectionService.assignZone(reassigning.id, nextZone);
       setReassigning(null);
       await refreshAll();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resetPassword = async (record) => {
+    setBusy(true);
+    try {
+      const result = await inspectionService.resetInspectorPassword(record.id);
+      setCredentials({ id: record.id, email: record.email, password: result.temporaryPassword, reset: true });
     } finally {
       setBusy(false);
     }
@@ -347,6 +358,7 @@ export default function InspectorManagement() {
                     { label: 'View details', icon: Eye, onSelect: () => openDetail(r) },
                     { label: 'Edit information', icon: Pencil, onSelect: () => setEditing(r) },
                     { label: 'Change zone', icon: MapPin, onSelect: () => setReassigning(r) },
+                    { label: 'Reset password', icon: KeyRound, onSelect: () => resetPassword(r) },
                     r.status === 'ACTIVE'
                       ? { label: 'Deactivate', icon: PauseCircle, tone: 'danger', divider: true, onSelect: () => setDeactivating(r) }
                       : { label: 'Activate', icon: PlayCircle, tone: 'success', divider: true, onSelect: () => applyStatus(r, 'ACTIVE') },
@@ -419,11 +431,11 @@ export default function InspectorManagement() {
         onSubmit={applyZone}
       />
 
-      {/* Generated credentials for a newly added officer */}
+      {/* Generated credentials - for a newly added officer, or a password reset */}
       <Modal
         open={!!credentials}
         onClose={() => setCredentials(null)}
-        title="Inspector account created"
+        title={credentials?.reset ? 'Password reset' : 'Inspector account created'}
         subtitle={credentials?.id}
         footer={
           <button type="button" onClick={() => setCredentials(null)} className="btn-primary">
@@ -433,9 +445,19 @@ export default function InspectorManagement() {
       >
         <div className="space-y-4">
           <p className="text-13 leading-relaxed text-ink-600">
-            A field-application account was created with a generated password. It is shown{' '}
-            <span className="font-medium text-ink-900">once, here only</span> — hand it to the officer directly;
-            it cannot be retrieved again from the console.
+            {credentials?.reset ? (
+              <>
+                A new password was generated and the officer's old one no longer works. It is shown{' '}
+                <span className="font-medium text-ink-900">once, here only</span> — hand it to the officer
+                directly; it cannot be retrieved again from the console.
+              </>
+            ) : (
+              <>
+                A field-application account was created with a generated password. It is shown{' '}
+                <span className="font-medium text-ink-900">once, here only</span> — hand it to the officer
+                directly; it cannot be retrieved again from the console.
+              </>
+            )}
           </p>
           <dl className="grid grid-cols-1 gap-px overflow-hidden rounded-lg border border-line bg-line">
             <div className="bg-surface px-4 py-3">

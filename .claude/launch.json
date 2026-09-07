@@ -1,0 +1,20 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "lm-guard-admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "LM-GUARD-Frontend/lm-guard-admin", "run", "dev", "--", "--port", "5173"],
+      "port": 5173
+    },
+    {
+      "name": "lm-guard-inspector",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": [
+        "/c",
+        "cd LM-GUARD-Frontend\\lm-guard-inspector && flutter run -d web-server --web-port 5174 --web-hostname localhost --dart-define=API_BASE_URL=https://lm-guard-backend.onrender.com/api"
+      ],
+      "port": 5174
+    }
+  ]
+}

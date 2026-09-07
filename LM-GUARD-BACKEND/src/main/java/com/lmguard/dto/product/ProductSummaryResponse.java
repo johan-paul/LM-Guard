@@ -27,6 +27,9 @@ public record ProductSummaryResponse(
         long openViolationCount,
 
         @Schema(description = "When this product was last inspected, if ever")
-        Instant lastInspectionAt
+        Instant lastInspectionAt,
+
+        @Schema(description = "The most recently captured package photo for this product, if any")
+        String imageUrl
 ) {
 }

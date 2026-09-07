@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, Building2, Download, Radar } from 'lucide-react';
+import { ArrowRight, Building2, CalendarPlus, Download, Radar } from 'lucide-react';
 
 import PageHeader from '../components/PageHeader';
 import RiskBadge, { RiskScore } from '../components/RiskBadge';
@@ -142,15 +142,38 @@ export default function RiskIntelligence() {
                 key: 'action',
                 header: '',
                 align: 'right',
-                width: 92,
+                width: 210,
                 render: (r) => (
-                  <Link
-                    to={`/products/${r.productId}`}
-                    onClick={(e) => e.stopPropagation()}
-                    className="inline-flex items-center gap-1 text-13 font-medium text-brand-600 hover:text-brand-700"
-                  >
-                    Profile <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
-                  </Link>
+                  <span className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/new-inspection', {
+                          state: {
+                            prefillFromRisk: {
+                              productId: r.productId,
+                              productName: r.product,
+                              riskScore: r.riskScore,
+                              establishment: r.establishment,
+                              address: r.address,
+                            },
+                          },
+                        });
+                      }}
+                      className="inline-flex items-center gap-1 text-13 font-medium text-brand-600 hover:text-brand-700"
+                      title="Open a follow-up inspection for this product, pre-filled from this row"
+                    >
+                      <CalendarPlus className="h-3.5 w-3.5" strokeWidth={2} /> Follow up
+                    </button>
+                    <Link
+                      to={`/products/${r.productId}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-13 font-medium text-ink-500 hover:text-ink-900"
+                    >
+                      Profile <ArrowRight className="h-3.5 w-3.5" strokeWidth={2} />
+                    </Link>
+                  </span>
                 ),
               },
             ]}

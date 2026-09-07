@@ -21,13 +21,17 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -138,5 +142,32 @@ public class ProductController {
                     + "`null` when none has been recorded for this product.")
     public ResponseEntity<ApiResponse<OnlineListingResponse>> onlineListing(@PathVariable UUID id) {
         return ResponseEntity.ok(ApiResponse.success(productService.onlineListing(id)));
+    }
+
+    @PostMapping(value = "/{id}/online-listing", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PreAuthorize("hasRole('ADMIN')")
+    @Operation(summary = "Capture an online-marketplace listing from a screenshot",
+            description = """
+                    ADMIN only. Upload a screenshot of the product's listing on a marketplace
+                    (Amazon, Flipkart, ...) and this reads the MRP, net quantity and manufacturer
+                    off it using the same OCR/semantic-extraction pipeline the package photo
+                    pipeline uses - no manual data entry. The saved listing then becomes the
+                    baseline `POST /{id}/analyze` compares the physical package's own OCR
+                    reading against (see `onlineMismatch` in the risk assessment).
+
+                    The extraction prompt is tuned for a photographed physical package, not a
+                    webpage screenshot, so treat a low-confidence or missing field the same way
+                    you would on a package photo: as something to verify by eye, not a certainty.
+                    """)
+    public ResponseEntity<ApiResponse<OnlineListingResponse>> captureOnlineListing(
+            @PathVariable UUID id,
+            @Parameter(description = "Screenshot of the marketplace listing page")
+            @RequestPart("file") MultipartFile file,
+            @Parameter(description = "Marketplace identifier", example = "AMAZON")
+            @RequestParam String source,
+            @Parameter(description = "Listing page URL, for reference")
+            @RequestParam(required = false) String listingUrl) {
+        return ResponseEntity.ok(ApiResponse.success(
+                "Online listing captured", productService.captureOnlineListing(id, file, source, listingUrl)));
     }
 }

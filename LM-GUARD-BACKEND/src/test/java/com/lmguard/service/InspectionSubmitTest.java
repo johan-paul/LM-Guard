@@ -10,9 +10,12 @@ import com.lmguard.exception.ApiException;
 import com.lmguard.exception.BadRequestException;
 import com.lmguard.mapper.AssignmentHistoryMapper;
 import com.lmguard.mapper.InspectionMapper;
+import com.lmguard.entity.Evidence;
 import com.lmguard.repository.AssignmentHistoryRepository;
 import com.lmguard.repository.ChecklistEntryRepository;
+import com.lmguard.repository.EvidenceRepository;
 import com.lmguard.repository.ExtractedFieldRepository;
+import com.lmguard.repository.InspectionEvidenceRepository;
 import com.lmguard.repository.InspectionRepository;
 import com.lmguard.repository.RiskScoreRepository;
 import com.lmguard.repository.UserRepository;
@@ -62,6 +65,8 @@ class InspectionSubmitTest {
     @Mock private UserRepository userRepository;
     @Mock private AssignmentHistoryRepository assignmentHistoryRepository;
     @Mock private ChecklistEntryRepository checklistEntryRepository;
+    @Mock private EvidenceRepository evidenceRepository;
+    @Mock private InspectionEvidenceRepository inspectionEvidenceRepository;
     @Mock private ProductService productService;
     @Mock private ZoneService zoneService;
     @Mock private FileStorageService fileStorageService;
@@ -77,6 +82,7 @@ class InspectionSubmitTest {
     void setUp() {
         service = new InspectionService(inspectionRepository, extractedFieldRepository, violationRepository,
                 riskScoreRepository, userRepository, assignmentHistoryRepository, checklistEntryRepository,
+                evidenceRepository, inspectionEvidenceRepository,
                 productService, zoneService, fileStorageService, evidenceService, analysisService, statusWriter,
                 inspectionMapper, assignmentHistoryMapper);
 
@@ -84,6 +90,12 @@ class InspectionSubmitTest {
         when(violationRepository.findByInspectionIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
         when(riskScoreRepository.findByInspectionId(any())).thenReturn(Optional.empty());
         when(inspectionMapper.toResponse(any(), any(), any(), any())).thenReturn(null);
+        // Evidence-first guard default: most tests here submit COMPLIANT/other decisions that
+        // aren't gated on evidence at all, but default to "evidence exists" so the ones that do
+        // submit NON_COMPLIANT aren't tripped up by an unrelated assertion - the dedicated
+        // evidence-guard tests below override this explicitly.
+        when(evidenceRepository.findByInspectionIdOrderByCreatedAtAsc(any()))
+                .thenReturn(List.of(Evidence.builder().build()));
     }
 
     @AfterEach
@@ -173,6 +185,40 @@ class InspectionSubmitTest {
 
         assertThat(inspection.getNotes()).isEqualTo("Spoke to the store manager.");
         assertThat(inspection.getStatus()).isEqualTo(InspectionStatus.IN_PROGRESS);
+    }
+
+    @Test
+    @DisplayName("evidence-first: refuses a NON_COMPLIANT verdict with zero evidence of any kind")
+    void refusesNonCompliantWithoutEvidence() {
+        authenticateAs(INSPECTOR_ID, Role.INSPECTOR);
+        Inspection inspection = inspectionAssignedTo(INSPECTOR_ID);
+        when(inspectionRepository.findDetailedById(INSPECTION_ID)).thenReturn(Optional.of(inspection));
+        when(checklistEntryRepository.countPendingByInspectionId(INSPECTION_ID)).thenReturn(0L);
+        when(evidenceRepository.findByInspectionIdOrderByCreatedAtAsc(INSPECTION_ID)).thenReturn(List.of());
+        when(inspectionEvidenceRepository.findByInspectionIdOrderByCapturedAtAsc(INSPECTION_ID)).thenReturn(List.of());
+
+        assertThatThrownBy(() -> service.submit(INSPECTION_ID,
+                new InspectionSubmitRequest(InspectionStatus.NON_COMPLIANT, null), INSPECTOR_ID))
+                .isInstanceOf(BadRequestException.class)
+                .satisfies(ex -> assertThat(((BadRequestException) ex).getErrorCode())
+                        .isEqualTo(com.lmguard.exception.ErrorCode.EVIDENCE_REQUIRED));
+    }
+
+    @Test
+    @DisplayName("evidence-first: an officer-captured photo alone satisfies the guard, without any AI evidence")
+    void allowsNonCompliantWithOnlyOfficerEvidence() {
+        authenticateAs(INSPECTOR_ID, Role.INSPECTOR);
+        Inspection inspection = inspectionAssignedTo(INSPECTOR_ID);
+        when(inspectionRepository.findDetailedById(INSPECTION_ID)).thenReturn(Optional.of(inspection));
+        when(checklistEntryRepository.countPendingByInspectionId(INSPECTION_ID)).thenReturn(0L);
+        when(inspectionRepository.save(any(Inspection.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(evidenceRepository.findByInspectionIdOrderByCreatedAtAsc(INSPECTION_ID)).thenReturn(List.of());
+        when(inspectionEvidenceRepository.findByInspectionIdOrderByCapturedAtAsc(INSPECTION_ID))
+                .thenReturn(List.of(com.lmguard.entity.InspectionEvidence.builder().build()));
+
+        service.submit(INSPECTION_ID, new InspectionSubmitRequest(InspectionStatus.NON_COMPLIANT, null), INSPECTOR_ID);
+
+        assertThat(inspection.getStatus()).isEqualTo(InspectionStatus.NON_COMPLIANT);
     }
 
     @Test

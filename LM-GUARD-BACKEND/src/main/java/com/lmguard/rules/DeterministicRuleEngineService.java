@@ -228,6 +228,10 @@ public class DeterministicRuleEngineService implements RuleEngineService {
     }
 
     private String formatConfidence(double confidence) {
-        return String.format(java.util.Locale.ROOT, "%.2f", confidence);
+        // Three places, not two: confidence is compared at full precision (fact.confidence() <
+        // threshold) but was being *displayed* at two decimal places, so a value like 0.6963
+        // against a 0.70 threshold rendered as the nonsensical "0.70 below the required 0.70" -
+        // same rounded text on both sides of a comparison that was in fact not a tie.
+        return String.format(java.util.Locale.ROOT, "%.3f", confidence);
     }
 }

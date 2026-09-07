@@ -86,8 +86,9 @@ class AiEvaluationPanel extends StatelessWidget {
         final int flagged = draft.aiEvaluation?.flaggedCount ?? 0;
         final int total = draft.aiEvaluation?.checklistResults.length ?? 0;
         final int lowConfidence = draft.aiEvaluation?.lowConfidenceCount ?? 0;
+        final List<String> warnings = draft.aiEvaluation?.warnings ?? const <String>[];
         return AppPanel(
-          leadingStripe: AppColors.success,
+          leadingStripe: warnings.isEmpty ? AppColors.success : AppColors.warning,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -104,6 +105,24 @@ class AiEvaluationPanel extends StatelessWidget {
                 Text(
                   '$lowConfidence assessment(s) came back at low confidence — treat those as advisory and verify against the package.',
                   style: AppText.caption.copyWith(color: AppColors.warning),
+                ),
+              ],
+              // Most importantly: the semantic (Gemini) step being unavailable for this run
+              // (rate-limited, quota exhausted, network failure) is a materially weaker result,
+              // not an ordinary accuracy dip - free-text fields like manufacturer name cannot
+              // be identified at all without it. That must be visible here, not buried in a
+              // server log the officer never sees.
+              for (final String warning in warnings) ...<Widget>[
+                const SizedBox(height: 6),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Icon(Icons.warning_amber_outlined, size: 16, color: AppColors.warning),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(warning, style: AppText.caption.copyWith(color: AppColors.warning)),
+                    ),
+                  ],
                 ),
               ],
               const SizedBox(height: 8),

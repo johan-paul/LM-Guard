@@ -235,12 +235,12 @@ class InspectionControllerTest {
     private ProductResponse product() {
         return new ProductResponse(PRODUCT_ID, "Classic Salted Chips", "ABC Foods",
                 "PACKAGED_FOOD", "8901234567890", Instant.parse("2026-09-04T10:00:00Z"),
-                Instant.parse("2026-09-04T10:00:00Z"));
+                Instant.parse("2026-09-04T10:00:00Z"), null);
     }
 
     private InspectionResponse pendingInspection() {
         return new InspectionResponse(INSPECTION_ID, InspectionStatus.PENDING, null, null, null,
-                null, null, null, null, product(), INSPECTOR_ID, "Test Inspector", null, null,
+                null, null, null, List.of(), null, product(), INSPECTOR_ID, "Test Inspector", null, null,
                 null, null, null, null, null, "aisle 4", null,
                 List.of(), List.of(), null, Instant.parse("2026-09-04T12:00:00Z"), null, null);
     }
@@ -274,7 +274,7 @@ class InspectionControllerTest {
                 30, 20, 0, 10, 15, 72, RiskLevel.HIGH, "Score 72 of 100 (HIGH).");
 
         return new InspectionResponse(INSPECTION_ID, InspectionStatus.IN_PROGRESS, InspectionStatus.NON_COMPLIANT,
-                new BigDecimal("0.9400"), 72, RiskLevel.HIGH, "DEMO-2026.1", "MOCK",
+                new BigDecimal("0.9400"), 72, RiskLevel.HIGH, "DEMO-2026.1", "MOCK", List.of(),
                 "http://localhost:8080/files/package-images/2026/09/04/x.jpg",
                 product(), INSPECTOR_ID, "Test Inspector", null, null,
                 null, null, null, null, null, null, null,

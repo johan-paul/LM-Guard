@@ -38,6 +38,11 @@ public class InspectionEvidence extends BaseEntity {
     @JoinColumn(name = "finding_id")
     private Finding finding;
 
+    /** Who captured this photo - null for rows uploaded before this column existed. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "captured_by")
+    private User capturedBy;
+
     @Column(name = "image_url", nullable = false, length = 1000)
     private String imageUrl;
 

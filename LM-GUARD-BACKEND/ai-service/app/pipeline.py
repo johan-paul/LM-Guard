@@ -13,13 +13,16 @@ handling").
 """
 from __future__ import annotations
 
+import io
 import logging
+import re
 import time
 from typing import Optional
 
 import cv2
 import httpx
 import numpy as np
+from PIL import Image as PILImage, ImageOps
 
 from . import normalization, vlm
 from .confidence import ConfidenceInputs, fuse
@@ -41,11 +44,45 @@ def fetch_image(image_url: str) -> bytes:
 
 
 def decode_image(image_bytes: bytes) -> np.ndarray:
-    array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(array, cv2.IMREAD_COLOR)
-    if image is None:
-        raise ValueError("Could not decode image bytes (unsupported or corrupt format)")
-    return image
+    """Decodes to a BGR array, upright.
+
+    Phone/browser cameras routinely save a JPEG with the sensor's native (often sideways or
+    upside-down) pixel data plus an EXIF orientation tag telling a viewer how to rotate it for
+    display -- they do not bake the rotation into the pixels themselves. `cv2.imdecode` ignores
+    that tag entirely, so without this step OCR, Gemini and every bounding box downstream would
+    all be computed against a rotated frame while the app itself displays the same JPEG the
+    right way up (browsers and Flutter's own image codec both honour EXIF orientation on
+    display) -- a silent mismatch between what the pipeline "sees" and what the inspector sees,
+    which both degrades text recognition (rotated text reads far worse) and throws off every
+    evidence rectangle. `ImageOps.exif_transpose` bakes the rotation into the pixels and drops
+    the tag, so everything from here on operates in the same upright frame the app renders.
+    """
+    try:
+        with PILImage.open(io.BytesIO(image_bytes)) as pil_image:
+            upright = ImageOps.exif_transpose(pil_image)
+            rgb = np.array(upright.convert("RGB"))
+        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    except Exception:  # noqa: BLE001 - fall back to the old path for anything PIL can't open
+        logger.warning("EXIF-aware decode failed; falling back to raw cv2.imdecode", exc_info=True)
+        array = np.frombuffer(image_bytes, dtype=np.uint8)
+        image = cv2.imdecode(array, cv2.IMREAD_COLOR)
+        if image is None:
+            raise ValueError("Could not decode image bytes (unsupported or corrupt format)")
+        return image
+
+
+def _encode_jpeg(image_bgr: np.ndarray) -> bytes:
+    ok, buffer = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
+    if not ok:
+        raise ValueError("Could not re-encode the upright image to JPEG")
+    return buffer.tobytes()
+
+
+def _word_tokens(text: str) -> set[str]:
+    # Alphanumeric runs only, punctuation stripped, so "wecare@in.nestle.com," and
+    # "WECARE@IN.NESTLE.COM" (or "1800-103-1947" and "1800 103 1947") tokenize identically -
+    # a plain `.split()` treats those as unrelated strings and silently drops a real match.
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 
 def _best_matching_block(needle: Optional[str], blocks: list[OcrBlock]) -> Optional[OcrBlock]:
@@ -60,11 +97,12 @@ def _best_matching_block(needle: Optional[str], blocks: list[OcrBlock]) -> Optio
         if needle_lower in block.text.lower() or block.text.lower() in needle_lower:
             return block
 
-    # Fall back to token overlap for values the VLM paraphrased slightly.
-    needle_tokens = set(needle_lower.split())
+    # Fall back to token overlap for values the VLM paraphrased slightly, or that OCR and the
+    # VLM punctuated differently (a joined "email, phone" value vs. two separate OCR blocks).
+    needle_tokens = _word_tokens(needle_lower)
     best, best_overlap = None, 0
     for block in blocks:
-        overlap = len(needle_tokens & set(block.text.lower().split()))
+        overlap = len(needle_tokens & _word_tokens(block.text))
         if overlap > best_overlap:
             best, best_overlap = block, overlap
     return best if best_overlap > 0 else None
@@ -109,10 +147,10 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
     warnings: list[str] = []
     started = time.time()
 
-    # --- 1. fetch + decode ---
+    # --- 1. fetch + decode (EXIF-normalized to upright, matching what the app displays) ---
     try:
-        image_bytes = fetch_image(image_url)
-        image = decode_image(image_bytes)
+        raw_bytes = fetch_image(image_url)
+        image = decode_image(raw_bytes)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Could not fetch/decode image %s: %s", image_url, exc)
         return AnalyzeResponse(
@@ -122,6 +160,9 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
         )
 
     image = resize_if_needed(image)
+    # Gemini must see the same upright, resized frame OCR and every bounding box below are
+    # computed against -- not the original (possibly sideways) bytes straight off the wire.
+    image_bytes = _encode_jpeg(image)
 
     # --- 2. image quality ---
     quality = assess_quality(image)
@@ -165,7 +206,16 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
         pattern_confidence = regex_result.pattern_confidence if regex_result else None
 
         value, raw_text = _choose_value(regex_result, vlm_field)
-        matched_block = _best_matching_block(raw_text, ocr_blocks) if raw_text else None
+        # A non-textual field (PACKAGE_CONDITION's own visual observation, not a printed value)
+        # has no OCR text region to point to - matching it anyway risks a coincidental
+        # token-overlap hit against an unrelated block, which would both draw a meaningless
+        # rectangle and (worse) let that spurious OCR corroboration inflate confidence for an
+        # observation confidence.py otherwise correctly treats as VLM-only and caps.
+        matched_block = (
+            _best_matching_block(raw_text, ocr_blocks)
+            if raw_text and name not in vlm.NON_TEXTUAL_FIELDS
+            else None
+        )
         # value stays None when neither path detected anything -- a first-class, honest
         # outcome (see ExtractedFact.notDetected on the Java side), not an error.
 

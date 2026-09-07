@@ -71,6 +71,8 @@ public class InspectionService {
     private final UserRepository userRepository;
     private final AssignmentHistoryRepository assignmentHistoryRepository;
     private final com.lmguard.repository.ChecklistEntryRepository checklistEntryRepository;
+    private final com.lmguard.repository.EvidenceRepository evidenceRepository;
+    private final com.lmguard.repository.InspectionEvidenceRepository inspectionEvidenceRepository;
 
     private final ProductService productService;
     private final ZoneService zoneService;
@@ -193,6 +195,21 @@ public class InspectionService {
         if (pendingChecklistItems > 0) {
             throw new BadRequestException(ErrorCode.CHECKLIST_INCOMPLETE,
                     "%d checklist item(s) are still unanswered".formatted(pendingChecklistItems));
+        }
+
+        // Evidence-first: a NON_COMPLIANT verdict is an assertion that something is wrong with
+        // the package, and that assertion must point at something - either the rule engine's
+        // own AI-drawn evidence (the normal path: every violation gets one) or, failing that, a
+        // photo the officer captured by hand. COMPLIANT/INCONCLUSIVE aren't gated the same way -
+        // the package photo captured before analysis (already mandatory - see
+        // InspectionAnalysisService.run()'s IMAGE_REQUIRED check) is evidence enough for "nothing
+        // wrong was found"; it's specifically the accusation that needs backing.
+        if (request.finalDecision() == InspectionStatus.NON_COMPLIANT) {
+            boolean hasEvidence = !evidenceRepository.findByInspectionIdOrderByCreatedAtAsc(inspectionId).isEmpty()
+                    || !inspectionEvidenceRepository.findByInspectionIdOrderByCapturedAtAsc(inspectionId).isEmpty();
+            if (!hasEvidence) {
+                throw new BadRequestException(ErrorCode.EVIDENCE_REQUIRED, ErrorCode.EVIDENCE_REQUIRED.getDefaultMessage());
+            }
         }
 
         inspection.setStatus(request.finalDecision());

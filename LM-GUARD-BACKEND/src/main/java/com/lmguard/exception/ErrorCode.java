@@ -19,6 +19,9 @@ public enum ErrorCode {
     PRODUCT_REQUIRED(HttpStatus.BAD_REQUEST, "A product must be identified before this action"),
     CHECKLIST_INCOMPLETE(HttpStatus.BAD_REQUEST, "The compliance checklist must be completed before submission"),
     INVALID_FINAL_DECISION(HttpStatus.BAD_REQUEST, "finalDecision must be COMPLIANT, NON_COMPLIANT or INCONCLUSIVE"),
+    EVIDENCE_REQUIRED(HttpStatus.BAD_REQUEST,
+            "A non-compliant verdict requires at least one evidence record - either the rule "
+                    + "engine's own AI-drawn evidence or an officer-captured photo"),
 
     // --- 401 ---
     UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "Authentication required"),
@@ -38,6 +41,10 @@ public enum ErrorCode {
     EVIDENCE_NOT_FOUND(HttpStatus.NOT_FOUND, "Evidence not found"),
     RULE_NOT_FOUND(HttpStatus.NOT_FOUND, "Rule not found"),
     RULESET_NOT_FOUND(HttpStatus.NOT_FOUND, "No active rules found for the requested ruleset version"),
+    RULESET_VERSION_LOCKED(HttpStatus.BAD_REQUEST,
+            "This ruleset version has already been used to judge at least one inspection and is "
+                    + "now immutable - publish a new version instead of editing this one"),
+    RULESET_VERSION_EXISTS(HttpStatus.BAD_REQUEST, "A ruleset with that version identifier already exists"),
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "Resource not found"),
     ZONE_NOT_FOUND(HttpStatus.NOT_FOUND, "Zone not found"),
     INSPECTOR_NOT_FOUND(HttpStatus.NOT_FOUND, "Inspector not found"),

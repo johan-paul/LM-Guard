@@ -21,8 +21,13 @@ const parseQty = (s = '') => {
   return { n, unit, base: unit === 'kg' || unit === 'l' ? n * 1000 : n };
 };
 const parseMoney = (s = '') => {
-  const m = String(s).match(/([\d,.]+)/);
-  return m ? parseFloat(m[1].replace(/,/g, '')) : null;
+  // Must start matching AT a digit, not just any run of digits/commas/periods - "Rs. 10.00"
+  // has a bare "." right after "Rs" that a leading-agnostic pattern matches first (as ".",
+  // parseFloat(".") = NaN), so it never reached the real "10.00" that follows the space. That
+  // silently broke every MRP comparison for the (very common) "Rs. X" printed format - the
+  // delta check below always saw NaN (falsy) as if no value had been read at all.
+  const m = String(s).match(/\d[\d,]*\.?\d*/);
+  return m ? parseFloat(m[0].replace(/,/g, '')) : null;
 };
 
 export default function ProductDetail() {
@@ -42,11 +47,30 @@ export default function ProductDetail() {
         const m = parseMoney(c.mrp);
         const pm = parseMoney(prev.mrp);
         const parts = [];
+
+        // A value going from "not declared" to "declared" (or vice versa) is just as real a
+        // difference as two declared values disagreeing - the previous version of this only
+        // compared when *both* sides parsed, which silently dropped the far more common case of
+        // a re-scan finally reading a field the first scan missed (or a rescan losing a field
+        // the first one caught), understating exactly the kind of change an inspector needs to
+        // see between two scans of the same product.
         if (q && pq && q.base !== pq.base) {
           const diff = q.base - pq.base;
-          parts.push(`${diff > 0 ? '+' : ''}${Math.round(diff)} ${q.unit === 'l' || q.unit === 'ml' ? 'mL' : 'g'}`);
+          parts.push(`${diff > 0 ? '+' : ''}${Math.round(diff)} ${q.unit === 'l' || q.unit === 'ml' ? 'mL' : 'g'} qty`);
+        } else if (q && !pq) {
+          parts.push(`qty now declared (${c.netQuantity})`);
+        } else if (!q && pq) {
+          parts.push(`qty declaration lost (was ${prev.netQuantity})`);
         }
-        if (m && pm && m !== pm) parts.push(`${m > pm ? '+' : '−'}₹${Math.abs(m - pm).toFixed(2)}`);
+
+        if (m && pm && m !== pm) {
+          parts.push(`${m > pm ? '+' : '−'}₹${Math.abs(m - pm).toFixed(2)}`);
+        } else if (m && !pm) {
+          parts.push(`MRP now declared (₹${m.toFixed(2)})`);
+        } else if (!m && pm) {
+          parts.push(`MRP declaration lost (was ₹${pm.toFixed(2)})`);
+        }
+
         deltaNote = parts.join(' · ');
       }
       return {
@@ -263,6 +287,28 @@ export default function ProductDetail() {
             emptyTitle="No violations on record"
             emptyDescription="Every inspection of this product satisfied the active ruleset."
             columns={[
+              {
+                key: 'evidence',
+                header: '',
+                width: 52,
+                render: (r) =>
+                  r.evidenceImageUrl ? (
+                    <img
+                      src={r.evidenceImageUrl}
+                      alt=""
+                      className="h-9 w-9 shrink-0 rounded border border-line object-cover"
+                      aria-hidden="true"
+                    />
+                  ) : (
+                    <span
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded border border-line bg-canvas"
+                      title="No image region - this is an absence finding, nothing to point a box at"
+                      aria-hidden="true"
+                    >
+                      <Package className="h-3.5 w-3.5 text-ink-300" strokeWidth={1.5} />
+                    </span>
+                  ),
+              },
               { key: 'id', header: 'Violation ID', width: 140, render: (r) => <span className="mono-id">{r.id}</span> },
               { key: 'title', header: 'Finding', render: (r) => <PrimaryCell title={r.title} subtitle={r.type} /> },
               { key: 'rule', header: 'Rule', hideBelow: 'md', width: 140, render: (r) => <span className="font-mono text-[12px] text-ink-800">{r.ruleId}</span> },

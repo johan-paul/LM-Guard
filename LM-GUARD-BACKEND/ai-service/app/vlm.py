@@ -46,7 +46,22 @@ FIELD_DESCRIPTIONS = {
     "EXPIRY_DATE": "Expiry / use-by / best-before date, if present.",
     "BATCH_NUMBER": "Batch or lot number, if present.",
     "COMMODITY_NAME": "Common or generic name of the commodity (e.g. 'Potato Chips', not the brand name).",
+    "PACKAGE_CONDITION": (
+        "Physical condition of the visible package panel only - not a declaration to read, an "
+        "observation to make. Reply exactly 'ACCEPTABLE' if the panel looks flat, intact and "
+        "fully legible. Otherwise describe the specific issue in a few words, e.g. 'torn near "
+        "the price declaration', 'creased across the manufacturer address', 'a sticker "
+        "obscures part of the net quantity'. This is advisory only, for a human inspector to "
+        "read - never state or imply a compliance verdict."
+    ),
 }
+
+# Fields that are a visual judgement call rather than a piece of printed text - there is
+# nothing in the OCR corpus for `_grounded_in_ocr` to check a claim like "torn near the price
+# declaration" against, since it is the model's own observation of the whole image, not a
+# transcription of something printed on it. Without this, every such field would be silently
+# capped at confidence 0.5 by the same rule that (correctly) distrusts an ungrounded text claim.
+NON_TEXTUAL_FIELDS = frozenset({"PACKAGE_CONDITION"})
 
 # Gemini's response_schema is a select subset of OpenAPI 3.0 (not full JSON Schema): a nullable
 # field is `{"type": "string", "nullable": true}`, not `{"type": ["string", "null"]}`.
@@ -106,6 +121,22 @@ def _grounded_in_ocr(quoted_text: Optional[str], ocr_text: str) -> bool:
         return False
     needle = quoted_text.strip().lower()
     return len(needle) >= 2 and needle in ocr_text.lower()
+
+
+def _describe_error(exc: Exception, errors_module) -> str:
+    """A one-line, human-readable summary of a failed Gemini call - never the raw API error
+    object. This string ends up in a warning banner shown directly to the inspector in the app
+    (see pipeline.py's `warnings` list), not just a server log, so a multi-hundred-character
+    nested dict of code/status/details/links/retry-info is noise, not information."""
+    api_error = getattr(errors_module, "APIError", ())
+    if isinstance(exc, api_error):
+        code = getattr(exc, "code", None)
+        if code == 429:
+            return "the daily request quota for the configured Gemini API key has been used up (free-tier limit)"
+        message = getattr(exc, "message", None) or getattr(exc, "status", None) or "request failed"
+        return f"Gemini API error {code}: {message}"
+    text = str(exc)
+    return text if len(text) <= 160 else text[:157] + "..."
 
 
 def extract_fields(
@@ -173,7 +204,7 @@ def extract_fields(
 
     if last_error is not None:
         logger.warning("VLM call failed after %d attempt(s): %s", attempt + 1, last_error)
-        return [], f"VLM call failed: {last_error}"
+        return [], f"VLM call failed: {_describe_error(last_error, errors)}"
 
     if not response.text:
         return [], "VLM returned an empty response"
@@ -193,7 +224,9 @@ def extract_fields(
         confidence = float(item.get("confidence", 0.0) or 0.0)
         confidence = max(0.0, min(1.0, confidence))
         quoted = item.get("quoted_text")
-        grounded = _grounded_in_ocr(quoted, ocr_text) if value else True  # absence needs no grounding
+        # absence needs no grounding; neither does a non-textual field, which was never a claim
+        # about printed text to begin with
+        grounded = True if (not value or name in NON_TEXTUAL_FIELDS) else _grounded_in_ocr(quoted, ocr_text)
         if value is not None and not grounded:
             # The model claimed a value OCR never read. Do not discard it outright (OCR can
             # miss things a VLM reads correctly, e.g. stylised fonts) but do not let it pass

@@ -13,6 +13,9 @@ public record ProductResponse(
         String category,
         String barcode,
         Instant createdAt,
-        Instant updatedAt
+        Instant updatedAt,
+
+        @Schema(description = "The most recently captured package photo for this product, if any")
+        String imageUrl
 ) {
 }

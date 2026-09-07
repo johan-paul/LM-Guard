@@ -34,6 +34,14 @@ class ScanStep extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         _PhotoPreview(path: draft.packagePhotoPath),
+        if (draft.captureError != null) ...<Widget>[
+          const SizedBox(height: 12),
+          InfoBanner(
+            tone: BannerTone.danger,
+            icon: Icons.error_outline,
+            message: draft.captureError!,
+          ),
+        ],
         const SizedBox(height: 14),
         Row(
           children: <Widget>[
@@ -42,7 +50,7 @@ class ScanStep extends StatelessWidget {
                 label: draft.packagePhotoCaptured ? 'Retake photo' : 'Take photo',
                 icon: Icons.photo_camera_outlined,
                 busy: draft.busy,
-                onPressed: () => draft.capturePackagePhoto(),
+                onPressed: () => draft.capturePackagePhoto(context),
               ),
             ),
             const SizedBox(width: 10),
@@ -52,7 +60,7 @@ class ScanStep extends StatelessWidget {
                 icon: Icons.upload_outlined,
                 onPressed: draft.busy
                     ? null
-                    : () => draft.capturePackagePhoto(fromGallery: true),
+                    : () => draft.capturePackagePhoto(context, fromGallery: true),
               ),
             ),
           ],

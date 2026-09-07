@@ -20,6 +20,11 @@ public record RuleSetResponse(
         @Schema(description = "Number of active rules in this version", example = "9")
         int ruleCount,
 
+        @Schema(description = "True once any inspection has been judged under this version - "
+                + "its rules are then immutable and POST /api/rules / PATCH .../active will "
+                + "refuse to change them. Publish a new version instead.")
+        boolean locked,
+
         @Schema(description = "The rules")
         List<RuleResponse> rules
 ) {

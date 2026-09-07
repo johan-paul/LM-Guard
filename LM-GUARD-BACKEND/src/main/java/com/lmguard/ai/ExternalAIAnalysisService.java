@@ -43,7 +43,8 @@ public class ExternalAIAnalysisService implements AIAnalysisService {
             ProductField.MANUFACTURE_DATE,
             ProductField.EXPIRY_DATE,
             ProductField.BATCH_NUMBER,
-            ProductField.COMMODITY_NAME);
+            ProductField.COMMODITY_NAME,
+            ProductField.PACKAGE_CONDITION);
 
     private final RestTemplate restTemplate;
     private final AiProperties aiProperties;

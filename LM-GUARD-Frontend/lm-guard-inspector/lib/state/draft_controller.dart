@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
+import 'package:flutter/widgets.dart' show BuildContext;
 
 import '../data/models/ai_evaluation.dart';
 import '../data/models/checklist_item.dart';
@@ -62,6 +64,13 @@ class DraftController extends ChangeNotifier {
   /// Set once [_packagePhotoPath] has actually been uploaded - null again
   /// after a retake, until the new photo is uploaded in turn.
   String? _uploadedPackageImageUrl;
+  /// Set when the camera/gallery picker itself fails (permission denied, no
+  /// camera device, browser blocked it) - distinct from [_aiError], which is
+  /// only ever set once a photo exists and the backend call on it failed.
+  /// Without this, a picker failure before any photo is captured had nowhere
+  /// to surface: [AiEvaluationPanel] only renders once [packagePhotoCaptured]
+  /// is true, so the officer saw "Take photo" do nothing at all.
+  String? _captureError;
 
   Inspection get inspection => _inspection;
   InspectionStep get step => _step;
@@ -74,6 +83,7 @@ class DraftController extends ChangeNotifier {
 
   String? get packagePhotoPath => _packagePhotoPath;
   bool get packagePhotoCaptured => _packagePhotoPath != null;
+  String? get captureError => _captureError;
 
   int get stepNumber => _step.number;
   int get stepCount => InspectionStep.values.length;
@@ -152,14 +162,15 @@ class DraftController extends ChangeNotifier {
   /// immediately runs the analysis - the inspector's only action is taking
   /// the photo; extraction and rule evaluation follow automatically. A
   /// retake replaces the previous photo and re-runs analysis the same way.
-  Future<void> capturePackagePhoto({bool fromGallery = false}) async {
+  Future<void> capturePackagePhoto(BuildContext context, {bool fromGallery = false}) async {
     _busy = true;
+    _captureError = null;
     notifyListeners();
     EvidenceItem? captured;
     try {
       captured = fromGallery
           ? await _evidenceService.pickFromGallery(label: 'Package photo')
-          : await _evidenceService.capture(label: 'Package photo');
+          : await _evidenceService.capture(context: context, label: 'Package photo');
       if (captured?.filePath != null) {
         _packagePhotoPath = captured!.filePath;
         _uploadedPackageImageUrl = null;
@@ -168,6 +179,11 @@ class DraftController extends ChangeNotifier {
         _aiError = null;
         _dirty = true;
       }
+    } catch (exception) {
+      // A cancelled picker returns null and is handled above, not an
+      // exception - this only catches genuine failures (permission denied,
+      // no camera device, the browser blocking camera access outright).
+      _captureError = _describeCaptureFailure(exception, fromGallery: fromGallery);
     } finally {
       _busy = false;
       notifyListeners();
@@ -175,6 +191,25 @@ class DraftController extends ChangeNotifier {
     if (captured?.filePath != null) {
       await runAiEvaluation();
     }
+  }
+
+  String _describeCaptureFailure(Object exception, {required bool fromGallery}) {
+    if (exception is PlatformException) {
+      switch (exception.code) {
+        case 'camera_access_denied':
+          return 'Camera access was denied. Allow camera permission for this app '
+              '(check your browser/device settings) and try again.';
+        case 'photo_access_denied':
+          return 'Photo library access was denied. Allow photo permission for '
+              'this app and try again.';
+        case 'no_available_camera':
+          return 'No camera was found on this device.';
+      }
+    }
+    return fromGallery
+        ? 'Could not open the photo library. Try again, or use the camera instead.'
+        : 'Could not open the camera. Check that camera permission is granted '
+            'for this browser/app, or use Upload instead.';
   }
 
   /* ---------------- Step 3: checklist ---------------- */
@@ -243,9 +278,12 @@ class DraftController extends ChangeNotifier {
             final AiChecklistResult? suggestion = _aiEvaluation!.checklistResults
                 .cast<AiChecklistResult?>()
                 .firstWhere((AiChecklistResult? r) => r?.ruleId == item.ruleRef, orElse: () => null);
-            if (suggestion == null || suggestion.aiSuggestedStatus == CheckResult.notApplicable) {
-              return item;
-            }
+            // A line the rule engine has nothing to say about (e.g. one that needs a physical
+            // measurement no photo can provide) is marked Not applicable, same as every other
+            // AI suggestion - previously this branch discarded that verdict and left the item on
+            // Pending forever, which blocked submission and looked like the AI had failed on
+            // exactly the same two lines every single time.
+            if (suggestion == null) return item;
             return item.copyWith(result: suggestion.aiSuggestedStatus);
           }).toList(),
           // Pre-fills the review step's final decision with the rule

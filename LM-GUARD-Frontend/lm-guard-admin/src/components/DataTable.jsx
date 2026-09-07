@@ -71,6 +71,12 @@ export default function DataTable({
               {columns.map((col) => (
                 <td
                   key={col.key}
+                  // A width hint on <th> alone doesn't reliably protect a narrow column under
+                  // `table-layout: auto` - a neighbouring column with long unbounded text (a
+                  // "Finding" description, say) can still starve it down to a couple of
+                  // pixels, which is exactly the failure mode for a thumbnail image: it loads
+                  // successfully and sits at opacity 1, just rendered too narrow to see.
+                  style={col.width ? { width: col.width, minWidth: col.width } : undefined}
                   className={`${dense ? 'py-2.5' : ''} ${
                     col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : ''
                   } ${col.hideBelow ? HIDE[col.hideBelow] : ''} ${col.className || ''}`}

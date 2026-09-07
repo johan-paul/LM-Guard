@@ -130,6 +130,7 @@ lmguard:
       package-images: ${STORAGE_BUCKET_PACKAGE_IMAGES:package-images}
       evidence: ${STORAGE_BUCKET_EVIDENCE:evidence}
       reports: ${STORAGE_BUCKET_REPORTS:reports}
+      online-listings: ${STORAGE_BUCKET_ONLINE_LISTINGS:online-listings}
 
   supabase:
     url: ${SUPABASE_URL:}

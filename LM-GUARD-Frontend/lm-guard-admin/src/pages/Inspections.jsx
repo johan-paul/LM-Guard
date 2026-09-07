@@ -26,6 +26,11 @@ const RISK_OPTIONS = [
   { value: 'LOW', label: 'Low risk' },
 ];
 
+const SORT_OPTIONS = [
+  { value: 'recent', label: 'Most recent' },
+  { value: 'risk', label: 'Highest risk first' },
+];
+
 export default function Inspections() {
   const navigate = useNavigate();
   const { reference } = useReferenceData();
@@ -35,9 +40,10 @@ export default function Inspections() {
   const [category, setCategory] = useState('ALL');
   const [inspector, setInspector] = useState('ALL');
   const [risk, setRisk] = useState('ALL');
+  const [sort, setSort] = useState('recent');
 
   const debouncedSearch = useDebounced(search);
-  const { inspections, loading } = useInspections({ search: debouncedSearch, status, category, inspector, risk });
+  const { inspections, loading } = useInspections({ search: debouncedSearch, status, category, inspector, risk, sort });
   const pager = usePagination(inspections, 10);
 
   const counts = useMemo(() => {
@@ -54,6 +60,7 @@ export default function Inspections() {
     setCategory('ALL');
     setInspector('ALL');
     setRisk('ALL');
+    setSort('recent');
   };
 
   const exportCsv = () => {
@@ -130,6 +137,7 @@ export default function Inspections() {
               ],
             },
             { key: 'risk', label: 'Risk', value: risk, onChange: setRisk, options: RISK_OPTIONS },
+            { key: 'sort', label: 'Sort', value: sort, onChange: setSort, options: SORT_OPTIONS },
           ]}
         />
 

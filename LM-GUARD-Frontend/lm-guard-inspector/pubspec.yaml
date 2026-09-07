@@ -24,11 +24,45 @@ dependencies:
 
   # Real camera/gallery capture for evidence photos (see CameraEvidenceService).
   image_picker: ^1.1.2
+  # image_picker's ImageSource.camera on Flutter Web opens a plain <input type=file capture>,
+  # which desktop browsers (there is no OS-level "take a photo now" file-picker integration on
+  # Windows/macOS the way there is on Android/iOS) just render as an ordinary file-open dialog -
+  # never a live camera. `camera` (camera_web on web) drives getUserMedia() directly for a real
+  # in-page live preview + capture on desktop Chrome; native platforms keep using image_picker
+  # unchanged, since its camera source already opens the real OS camera app there.
+  camera: ^0.12.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # Generates the real app icon (Android/iOS/web) from assets/icon/icon.png, replacing the
+  # default Flutter icon - see the icon_generation config below and README-ICON.md for how to
+  # regenerate after changing the source image.
+  flutter_launcher_icons: ^0.13.1
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/icon/
+
+# Run `dart run flutter_launcher_icons` to (re)generate every platform's icon from these two
+# source images. android/ is regenerated from scratch on every CI build (see
+# .github/workflows/build-inspector-apk.yml), so this step is also wired into that workflow -
+# committing pre-generated Android icon files here would just get overwritten and go stale.
+flutter_launcher_icons:
+  image_path: "assets/icon/icon.png"
+  android: true
+  adaptive_icon_background: "#0B1F33"
+  adaptive_icon_foreground: "assets/icon/icon_foreground.png"
+  # iOS icon generation needs an ios/ platform folder to write into, which - like android/ -
+  # isn't committed to this repo and only exists once someone runs
+  # `flutter create --platforms ios .` (on a Mac; this can't be built or tested on Windows).
+  # Flip this to true and rerun `dart run flutter_launcher_icons` after creating that folder.
+  ios: false
+  remove_alpha_ios: true
+  web:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    background_color: "#0B1F33"
+    theme_color: "#0B1F33"
