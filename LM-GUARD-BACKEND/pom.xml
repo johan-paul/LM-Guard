@@ -30,6 +30,15 @@
             <artifactId>spring-boot-starter-web</artifactId>
         </dependency>
 
+        <!-- Actuator: /actuator/health backs both SecurityConfig's permitAll list and
+             render.yaml's healthCheckPath - was configured under `management:` in
+             application.yml but the dependency itself was never added, so the endpoint
+             404'd and Render's health check could never pass. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
         <!-- Persistence -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
