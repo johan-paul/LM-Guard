@@ -6,6 +6,13 @@ spring:
   application:
     name: lm-guard-backend
 
+  # Auto-loads .env from the working directory as if it were a .properties file, so
+  # `./mvnw spring-boot:run` picks up secrets without a shell-specific `source .env`
+  # step (which doesn't exist on Windows cmd/PowerShell). Optional: absent in
+  # production, where Render/the host injects real environment variables instead.
+  config:
+    import: optional:file:.env[.properties]
+
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
 

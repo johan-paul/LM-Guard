@@ -2,6 +2,14 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Loads ai-service/.env into the process environment regardless of the shell or OS
+# (Windows has no `source`/`set -a`). Real deployments set env vars directly and
+# have no .env file, so this is a no-op there.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 def _bool(name: str, default: bool) -> bool:

@@ -476,7 +476,9 @@ class ApiInspectionRepository implements InspectionRepository {
       if (location.isNotEmpty) 'address': location,
       'inspectionType': type.wireValue,
       'priority': priority.wireValue,
-      'dueDate': scheduledFor.toIso8601String(),
+      // .toUtc() first: a bare local-time ISO string (no offset/Z) fails Jackson's
+      // java.time.Instant deserialization on the backend with a 400.
+      'dueDate': scheduledFor.toUtc().toIso8601String(),
     }) as Map<String, dynamic>;
     return _inspectionFromDetail(json).copyWith(checklist: MockInspectionRepository.blankChecklist());
   }

@@ -1,0 +1,97 @@
+# Render Blueprint - deploys all three LM-GUARD web services in one shot.
+# In the Render dashboard: New -> Blueprint -> point at this repo -> Apply.
+# Secrets (marked sync: false below) are never stored here - Render prompts
+# for them once per service and keeps them in its own encrypted store.
+services:
+  # ---------------------------------------------------------------------
+  # Spring Boot backend (Java has no native Render runtime, hence Docker)
+  # ---------------------------------------------------------------------
+  - type: web
+    name: lm-guard-backend
+    runtime: docker
+    dockerfilePath: ./LM-GUARD-BACKEND/Dockerfile
+    dockerContext: ./LM-GUARD-BACKEND
+    plan: starter
+    healthCheckPath: /actuator/health
+    envVars:
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      - key: DB_URL
+        sync: false
+      - key: DB_USERNAME
+        sync: false
+      - key: DB_PASSWORD
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: supabase
+      # Set after the first deploy, once Render has assigned the admin console's
+      # URL, e.g. https://lm-guard-admin.onrender.com (no trailing slash).
+      - key: FRONTEND_URL
+        sync: false
+      # Set after the first deploy to the ai-service's Render URL,
+      # e.g. https://lm-guard-ai-service.onrender.com
+      - key: AI_SERVICE_URL
+        sync: false
+      - key: AI_MOCK_MODE
+        value: "false"
+      - key: AI_FALLBACK_TO_MOCK
+        value: "true"
+      - key: AI_SERVICE_API_KEY
+        sync: false
+      - key: RULES_SEED_DEMO
+        value: "false"
+      - key: DEMO_SEED_ZONES
+        value: "false"
+      - key: DEMO_SEED_ACCOUNTS
+        value: "false"
+
+  # ---------------------------------------------------------------------
+  # Python/FastAPI AI service (OCR + Gemini Vision extraction)
+  # ---------------------------------------------------------------------
+  - type: web
+    name: lm-guard-ai-service
+    runtime: python
+    rootDir: LM-GUARD-BACKEND/ai-service
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13"
+      - key: AI_SERVICE_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.6-flash
+      - key: AI_ENABLE_VLM
+        value: "true"
+
+  # ---------------------------------------------------------------------
+  # React admin console (static build)
+  # ---------------------------------------------------------------------
+  - type: web
+    name: lm-guard-admin
+    runtime: static
+    rootDir: LM-GUARD-Frontend/lm-guard-admin
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      # Set after the first deploy to the backend's Render URL + /api,
+      # e.g. https://lm-guard-backend.onrender.com/api (Vite bakes this in
+      # at build time, so changing it later requires a rebuild/redeploy).
+      - key: VITE_API_BASE_URL
+        sync: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
