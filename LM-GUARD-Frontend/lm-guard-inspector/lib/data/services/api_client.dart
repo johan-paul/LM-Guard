@@ -120,12 +120,15 @@ class ApiClient {
       // from the picked file's own type) - MultipartFile.fromBytes otherwise
       // defaults to application/octet-stream, which the backend's image-type
       // validation rejects outright.
-      final String? contentType = blob.headers['content-type'];
+      final String? headerType = blob.headers['content-type'];
+      final MediaType mediaType = (headerType != null && headerType != 'application/octet-stream')
+          ? MediaType.parse(headerType)
+          : MediaType('image', 'jpeg');
       file = http.MultipartFile.fromBytes(
         field,
         blob.bodyBytes,
         filename: 'upload.jpg',
-        contentType: contentType != null ? MediaType.parse(contentType) : null,
+        contentType: mediaType,
       );
     } else {
       final String lowerPath = filePath.toLowerCase();
