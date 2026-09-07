@@ -520,7 +520,10 @@ class ApiInspectionRepository implements InspectionRepository {
     final List<dynamic> violations = json['violations'] as List<dynamic>? ?? <dynamic>[];
 
     final List<AiChecklistResult> results = checklist.map((ChecklistItem item) {
-      final String? backendField = _checklistFieldMapping[item.id];
+      // The mapping's keys are LMPC-* rule references - the checklist
+      // template's own CHK-nn `id` is just a stable local identity for this
+      // one screen and is never a valid key into it.
+      final String? backendField = _checklistFieldMapping[item.ruleRef];
       if (backendField == null) {
         return AiChecklistResult(
           ruleId: item.ruleRef,
@@ -598,6 +601,7 @@ class ApiInspectionRepository implements InspectionRepository {
       identifiedProduct: product == null ? null : _productFromJson(product),
       packageImageUrl: json['imageUrl'] as String?,
       violations: violationEvidence,
+      suggestedFinalStatus: json['aiSuggestedStatus'] as String?,
     );
   }
 

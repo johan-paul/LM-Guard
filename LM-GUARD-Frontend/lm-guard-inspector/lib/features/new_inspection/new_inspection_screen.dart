@@ -11,16 +11,17 @@ import '../../data/services/evidence_service.dart';
 import '../../state/draft_controller.dart';
 import 'steps/checklist_step.dart';
 import 'steps/evidence_step.dart';
-import 'steps/findings_step.dart';
 import 'steps/information_step.dart';
 import 'steps/review_step.dart';
 import 'steps/scan_step.dart';
 
 /// The guided field inspection workflow.
 ///
-/// Information → Scan → Checklist → Evidence → Findings → Review. The
-/// backend identifies the product from the scanned photo itself - there is
-/// no manual identification step.
+/// Information → Scan → Checklist → Findings & evidence → Review. The
+/// backend identifies the product from the scanned photo itself, and the
+/// rule engine's own violations - each with an evidence region on the photo
+/// - are the findings: there is no manual identification step and no
+/// separate step for raising a finding by hand.
 class NewInspectionScreen extends StatelessWidget {
   const NewInspectionScreen({
     super.key,
@@ -143,8 +144,6 @@ class _WorkflowView extends StatelessWidget {
         return const ChecklistStep();
       case InspectionStep.evidence:
         return const EvidenceStep();
-      case InspectionStep.findings:
-        return const FindingsStep();
       case InspectionStep.review:
         return const ReviewStep();
     }
@@ -341,7 +340,6 @@ class _ActionBar extends StatelessWidget {
         return draft.packagePhotoCaptured;
       case InspectionStep.checklist:
       case InspectionStep.evidence:
-      case InspectionStep.findings:
       case InspectionStep.review:
         return true;
     }

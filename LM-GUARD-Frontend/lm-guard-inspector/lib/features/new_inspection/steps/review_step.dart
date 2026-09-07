@@ -8,12 +8,17 @@ import '../../../core/widgets/chips.dart';
 import '../../../core/widgets/checklist_panel.dart';
 import '../../../core/widgets/panels.dart';
 import '../../../core/widgets/product_panel.dart';
+import '../../../data/models/ai_evaluation.dart';
 import '../../../data/models/enums.dart';
-import '../../../data/models/finding.dart';
 import '../../../data/models/inspection.dart';
 import '../../../state/draft_controller.dart';
 
-/// Step 6 — the compliance report as it will be submitted.
+/// Step 5 — the compliance report as it will be submitted, compiled entirely
+/// from the AI/rule engine's own output: the identified product, the
+/// checklist it filled in, every violation with its evidence, and the rule
+/// engine's own suggested verdict, pre-selected below. The officer reviews
+/// and can override any of it before submitting - nothing here is typed in
+/// from a blank state.
 class ReviewStep extends StatefulWidget {
   const ReviewStep({super.key});
 
@@ -42,6 +47,7 @@ class _ReviewStepState extends State<ReviewStep> {
   Widget build(BuildContext context) {
     final DraftController draft = context.watch<DraftController>();
     final Inspection record = draft.inspection;
+    final List<AiViolationEvidence> violations = draft.aiEvaluation?.violations ?? const <AiViolationEvidence>[];
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
@@ -128,13 +134,16 @@ class _ReviewStepState extends State<ReviewStep> {
         ),
         ChecklistPanel(items: record.checklist),
 
-        // --- Findings --------------------------------------------------
+        // --- Findings & evidence -----------------------------------------
+        // Sourced entirely from the rule engine's own violations - each one
+        // already carries its evidence region, so there is nothing separate
+        // to show here beyond what the findings/evidence step already did.
         const SizedBox(height: 20),
         SectionHeading(
-          'Findings & violations',
-          trailing: Text('${record.findings.length}', style: AppText.caption),
+          'Findings & evidence',
+          trailing: Text('${violations.length}', style: AppText.caption),
         ),
-        if (record.findings.isEmpty)
+        if (violations.isEmpty)
           const AppPanel(
             child: Text(
               'No violations recorded against this inspection.',
@@ -142,56 +151,31 @@ class _ReviewStepState extends State<ReviewStep> {
             ),
           )
         else
-          ...record.findings.map(
-            (Finding finding) => AppPanel(
+          ...violations.map(
+            (AiViolationEvidence violation) => AppPanel(
               margin: const EdgeInsets.only(bottom: 8),
-              leadingStripe: finding.severity == Severity.critical
-                  ? AppColors.critical
-                  : AppColors.danger,
+              leadingStripe: violation.severity == 'CRITICAL' ? AppColors.critical : AppColors.danger,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Row(
                     children: <Widget>[
-                      Expanded(
-                        child: Text(finding.reference, style: AppText.identifier),
-                      ),
-                      SeverityChip(finding.severity, dense: true),
+                      Expanded(child: Text(violation.ruleCode, style: AppText.identifier)),
+                      if (violation.boundingBox != null)
+                        const Icon(Icons.crop_free, size: 15, color: AppColors.inkFaint),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  Text(finding.description, style: AppText.body),
+                  Text(violation.finding, style: AppText.body),
                   const SizedBox(height: 6),
                   Text(
-                    '${finding.ruleRef} · ${finding.ruleName}',
+                    '${violation.fieldName} · ${(violation.confidence * 100).round()}% confidence',
                     style: AppText.caption,
                   ),
                 ],
               ),
             ),
           ),
-
-        // --- Evidence --------------------------------------------------
-        const SizedBox(height: 20),
-        const SectionHeading('Evidence'),
-        AppPanel(
-          child: Row(
-            children: <Widget>[
-              const Icon(
-                Icons.photo_library_outlined,
-                size: 18,
-                color: AppColors.inkMuted,
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  '${Fmt.plural(record.evidence.length, 'item')} attached',
-                  style: AppText.body,
-                ),
-              ),
-            ],
-          ),
-        ),
 
         // --- Officer notes ---------------------------------------------
         const SizedBox(height: 20),

@@ -85,6 +85,7 @@ class AIEvaluation {
     this.identifiedProduct,
     this.packageImageUrl,
     this.violations = const <AiViolationEvidence>[],
+    this.suggestedFinalStatus,
   });
 
   final String inspectionId;
@@ -102,6 +103,13 @@ class AIEvaluation {
   /// The analysed package photo - what [violations]' bounding boxes are
   /// drawn over.
   final String? packageImageUrl;
+
+  /// The rule engine's overall verdict (COMPLIANT/NON_COMPLIANT/
+  /// INCONCLUSIVE) - purely advisory, pre-filling the review step's final
+  /// decision so the officer starts from the AI's determination rather than
+  /// a blank choice. Never becomes the inspection's authoritative outcome by
+  /// itself; only the officer's own submit does that.
+  final String? suggestedFinalStatus;
 
   /// Every rule violation the rule engine raised, each carrying its own
   /// evidence region - this is what the Evidence step renders. The AI/rule
