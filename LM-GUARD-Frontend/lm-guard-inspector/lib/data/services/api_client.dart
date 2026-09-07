@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 import '../../core/config/app_config.dart';
@@ -100,14 +101,29 @@ class ApiClient {
   /// Multipart upload (package image / officer evidence). [query] becomes URL
   /// query parameters (the officer-evidence endpoint takes `label`/`description`
   /// that way, since the body is the file itself).
+  ///
+  /// [filePath] is whatever `image_picker`'s `XFile.path` returned. On mobile/
+  /// desktop that is a real filesystem path `MultipartFile.fromPath` can read
+  /// directly; on web it is a `blob:` URL with no filesystem behind it at all,
+  /// and `fromPath` throws `UnsupportedError` there (a bug independent of the
+  /// caller - it doesn't touch the network, so the backend never sees the
+  /// request). Fetching that blob URL and building the multipart file from its
+  /// bytes instead works identically on every platform.
   Future<dynamic> uploadFile(String path, String filePath,
       {String field = 'file', Map<String, String>? query}) async {
     final Uri uri = query == null ? _uri(path) : _uri(path).replace(queryParameters: query);
+    final http.MultipartFile file = kIsWeb
+        ? http.MultipartFile.fromBytes(
+            field,
+            (await http.get(Uri.parse(filePath))).bodyBytes,
+            filename: 'upload.jpg',
+          )
+        : await http.MultipartFile.fromPath(field, filePath);
     final http.MultipartRequest request = http.MultipartRequest('POST', uri)
       ..headers.addAll(<String, String>{
         if (_authToken != null) 'Authorization': 'Bearer $_authToken',
       })
-      ..files.add(await http.MultipartFile.fromPath(field, filePath));
+      ..files.add(file);
     final http.StreamedResponse streamed = await _client.send(request);
     final http.Response response = await http.Response.fromStream(streamed);
     return _unwrap(response);

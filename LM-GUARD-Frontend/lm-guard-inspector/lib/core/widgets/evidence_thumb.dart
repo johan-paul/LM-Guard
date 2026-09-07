@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../data/models/enums.dart';
@@ -48,11 +49,19 @@ class EvidenceThumb extends StatelessWidget {
   Widget? _image() {
     final String? filePath = item.filePath;
     if (filePath != null) {
-      return Image.file(
-        File(filePath),
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => _placeholder(),
-      );
+      // On web, image_picker's XFile.path is a blob: URL - dart:io's File
+      // can't read it, but Image.network resolves blob: URLs natively there.
+      return kIsWeb
+          ? Image.network(
+              filePath,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _placeholder(),
+            )
+          : Image.file(
+              File(filePath),
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => _placeholder(),
+            );
     }
     final String? imageUrl = item.imageUrl;
     if (imageUrl != null) {

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -101,20 +102,33 @@ class _PhotoPreview extends StatelessWidget {
       );
     }
 
+    // On web, image_picker's XFile.path is a blob: URL with no filesystem
+    // behind it - dart:io's File can't read it. Image.network handles blob:
+    // URLs correctly there (the browser resolves them natively); everywhere
+    // else path is a real file, which Image.file needs.
+    final Widget image = kIsWeb
+        ? Image.network(
+            path!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _brokenImage(),
+          )
+        : Image.file(
+            File(path!),
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _brokenImage(),
+          );
+
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: AspectRatio(
-        aspectRatio: 4 / 3,
-        child: Image.file(
-          File(path!),
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => Container(
-            color: AppColors.navy,
-            alignment: Alignment.center,
-            child: const Icon(Icons.broken_image_outlined, color: Colors.white54),
-          ),
-        ),
-      ),
+      child: AspectRatio(aspectRatio: 4 / 3, child: image),
+    );
+  }
+
+  Widget _brokenImage() {
+    return Container(
+      color: AppColors.navy,
+      alignment: Alignment.center,
+      child: const Icon(Icons.broken_image_outlined, color: Colors.white54),
     );
   }
 }
