@@ -60,8 +60,11 @@ jobs:
       - name: Build release APK
         working-directory: LM-GUARD-Frontend/lm-guard-inspector
         run: |
-          flutter build apk --release \
-            --dart-define=API_BASE_URL=${{ github.event.inputs.api_base_url || 'https://lm-guard-backend.onrender.com/api' }}
+          API_URL="${{ github.event.inputs.api_base_url }}"
+          if [ -z "$API_URL" ]; then
+            API_URL="https://lm-guard-backend.onrender.com/api"
+          fi
+          flutter build apk --release --dart-define=API_BASE_URL="$API_URL"
 
       - uses: actions/upload-artifact@v4
         with:

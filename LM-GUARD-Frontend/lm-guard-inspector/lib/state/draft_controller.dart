@@ -296,7 +296,7 @@ class DraftController extends ChangeNotifier {
       }
     } catch (exception) {
       _aiStatus = AiEvaluationStatus.failed;
-      _aiError = 'The AI evaluation could not be completed.';
+      _aiError = 'The AI evaluation could not be completed ($exception).';
     } finally {
       notifyListeners();
     }
