@@ -74,11 +74,16 @@ public class WeightedRiskEngineService implements RiskEngineService {
 
         int repeatIssue = input.hasRepeatIssue() ? weights.repeatIssue() : 0;
         if (repeatIssue > 0) {
-            reasons.add("a rule breached previously on this product has been breached again (+%d)"
-                    .formatted(repeatIssue));
+            reasons.add("one or more rule codes have been breached on this product before (+%d)".formatted(repeatIssue));
         }
 
-        int raw = previousViolations + productChanges + onlineMismatch + categoryRisk + repeatIssue;
+        int currentBreaches = input.currentRuleCodes() == null ? 0 : input.currentRuleCodes().size();
+        int currentRiskPoints = Math.min(35, currentBreaches * 15);
+        if (currentRiskPoints > 0) {
+            reasons.add("%d rule breach(es) detected in current inspection (+%d)".formatted(currentBreaches, currentRiskPoints));
+        }
+
+        int raw = previousViolations + productChanges + onlineMismatch + categoryRisk + repeatIssue + currentRiskPoints;
         int total = Math.min(raw, riskProperties.maxScore());
         RiskLevel level = level(total);
 

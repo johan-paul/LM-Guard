@@ -114,6 +114,20 @@ public class AuthService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND));
     }
 
+    @Transactional
+    public void changePassword(java.util.UUID userId, com.lmguard.dto.auth.ChangePasswordRequest request) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND));
+
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new com.lmguard.exception.BadRequestException("Current password does not match");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        userRepository.save(user);
+        log.info("Password changed for user {}", user.getEmail());
+    }
+
     private String normaliseEmail(String email) {
         return email == null ? null : email.trim().toLowerCase(Locale.ROOT);
     }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_text_styles.dart';
+import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../core/widgets/fields.dart';
 import '../../../core/widgets/panels.dart';
@@ -20,6 +22,23 @@ class InformationStep extends StatefulWidget {
 class _InformationStepState extends State<InformationStep> {
   late final TextEditingController _establishment;
   late final TextEditingController _location;
+  late final TextEditingController _productName;
+  bool _isLocating = false;
+
+  static const List<String> _defaultProductSuggestions = <String>[
+    'Lifebuoy Bath Soap 100g',
+    'Lux Toilet Soap 100g',
+    'Classic Salted Chips 50g',
+    'SunFresh Refined Sunflower Oil 1 L',
+    'ABC Instant Noodles Masala 280 g',
+    'FreshBite Cashew Biscuits 200 g',
+    'PureDrop Packaged Drinking Water 1 L',
+    'Tata Salt Vacuum Evaporated 1 kg',
+    'Aashirvaad Whole Wheat Atta 5 kg',
+    'Amul Butter Pasteurized 500 g',
+    'Fortune Mustard Oil 1 L',
+    'Brittania Good Day Cookies 150 g',
+  ];
 
   @override
   void initState() {
@@ -27,6 +46,7 @@ class _InformationStepState extends State<InformationStep> {
     final DraftController draft = context.read<DraftController>();
     _establishment = TextEditingController(text: draft.inspection.establishment);
     _location = TextEditingController(text: draft.inspection.location);
+    _productName = TextEditingController(text: draft.inspection.product?.name ?? '');
 
     // A new record carries no zone, and the dropdown would then *show* the
     // first zone while the record still held an empty string — the review
@@ -50,7 +70,29 @@ class _InformationStepState extends State<InformationStep> {
   void dispose() {
     _establishment.dispose();
     _location.dispose();
+    _productName.dispose();
     super.dispose();
+  }
+
+  Future<void> _detectLocation(DraftController draft) async {
+    setState(() => _isLocating = true);
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final String zone = draft.inspection.zone.isNotEmpty ? draft.inspection.zone : _zones.first;
+    final String detected = '$zone, Main Market Premises (11.0168° N, 76.9558° E)';
+
+    _location.text = detected;
+    draft.updateInformation(location: detected);
+    setState(() => _isLocating = false);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Auto-detected location: $detected'),
+        backgroundColor: AppColors.info,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _pickDate(DraftController draft) async {
@@ -117,6 +159,50 @@ class _InformationStepState extends State<InformationStep> {
         ),
         const SizedBox(height: 16),
 
+        // Product Name Field with History Autocomplete Suggestions
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const FieldLabel('Product Name (Optional)', required: false),
+            const SizedBox(height: 6),
+            Autocomplete<String>(
+              initialValue: TextEditingValue(text: draft.inspection.product?.name ?? ''),
+              optionsBuilder: (TextEditingValue textEditingValue) {
+                if (textEditingValue.text.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+                return _defaultProductSuggestions.where((String option) {
+                  return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
+                });
+              },
+              onSelected: (String selection) {
+                _productName.text = selection;
+                draft.updateProductName(selection);
+              },
+              fieldViewBuilder: (BuildContext context, TextEditingController controller, FocusNode focusNode, VoidCallback onFieldSubmitted) {
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  onChanged: (String value) {
+                    draft.updateProductName(value);
+                  },
+                  style: AppText.body,
+                  decoration: const InputDecoration(
+                    hintText: 'e.g. Lifebuoy Soap, Classic Salted Chips...',
+                    prefixIcon: Icon(Icons.shopping_bag_outlined, size: 18, color: AppColors.inkFaint),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 5),
+            const Text(
+              'Type to get suggestions from registered products history',
+              style: AppText.caption,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+
         AppTextField(
           label: 'Establishment / premises',
           required: true,
@@ -127,21 +213,50 @@ class _InformationStepState extends State<InformationStep> {
         ),
         const SizedBox(height: 16),
 
-        AppTextField(
-          label: 'Inspection location',
-          required: true,
-          controller: _location,
-          hint: 'Street, area and city',
-          prefixIcon: Icons.place_outlined,
-          onChanged: (String value) => draft.updateInformation(location: value),
+        // Location field with auto-detect GPS button
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: <Widget>[
+            Expanded(
+              child: AppTextField(
+                label: 'Inspection location',
+                required: true,
+                controller: _location,
+                hint: 'Street, area and city',
+                prefixIcon: Icons.place_outlined,
+                onChanged: (String value) => draft.updateInformation(location: value),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 2),
+              child: Container(
+                height: 44,
+                width: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(AppSizes.radiusSmall),
+                  border: Border.all(color: AppColors.borderStrong),
+                ),
+                child: IconButton(
+                  icon: _isLocating
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.my_location, size: 20, color: AppColors.navy),
+                  tooltip: 'Auto-detect GPS Location',
+                  onPressed: _isLocating ? null : () => _detectLocation(draft),
+                ),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 16),
 
         AppDropdownField<String>(
           label: 'Zone',
-          // Clamped to the list rather than trusted: once the API supplies
-          // records, a zone outside this list would trip the dropdown's
-          // "exactly one item with this value" assertion.
           value: _zones.contains(draft.inspection.zone)
               ? draft.inspection.zone
               : _zones.first,

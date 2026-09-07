@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/formatters.dart';
 import '../../core/widgets/buttons.dart';
 import '../../core/widgets/empty_state.dart';
+import '../../core/widgets/fields.dart';
 import '../../core/widgets/gov_app_bar.dart';
 import '../../core/widgets/panels.dart';
 import '../../data/models/inspector.dart';
@@ -135,7 +136,7 @@ class ProfileScreen extends StatelessWidget {
                         context,
                         icon: Icons.lock_outline,
                         label: 'Change password',
-                        onTap: () => _notImplemented(context, 'Password reset'),
+                        onTap: () => _showChangePasswordDialog(context),
                         isFirst: true,
                       ),
                       _action(
@@ -317,6 +318,174 @@ class ProfileScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  void _showChangePasswordDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (BuildContext context) => const _ChangePasswordDialog(),
+    );
+  }
+}
+
+class _ChangePasswordDialog extends StatefulWidget {
+  const _ChangePasswordDialog();
+
+  @override
+  State<_ChangePasswordDialog> createState() => _ChangePasswordDialogState();
+}
+
+class _ChangePasswordDialogState extends State<_ChangePasswordDialog> {
+  final TextEditingController _currentPasswordController = TextEditingController();
+  final TextEditingController _newPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController = TextEditingController();
+
+  bool _obscureCurrent = true;
+  bool _obscureNew = true;
+  bool _obscureConfirm = true;
+  String? _error;
+  bool _submitting = false;
+
+  @override
+  void dispose() {
+    _currentPasswordController.dispose();
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final String currentPassword = _currentPasswordController.text.trim();
+    final String newPassword = _newPasswordController.text.trim();
+    final String confirmPassword = _confirmPasswordController.text.trim();
+
+    if (currentPassword.isEmpty) {
+      setState(() => _error = 'Please enter your current password');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setState(() => _error = 'New password must be at least 6 characters');
+      return;
+    }
+    if (newPassword != confirmPassword) {
+      setState(() => _error = 'New passwords do not match');
+      return;
+    }
+
+    setState(() {
+      _error = null;
+      _submitting = true;
+    });
+
+    final AuthController auth = context.read<AuthController>();
+    final bool success = await auth.changePassword(currentPassword, newPassword);
+
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Password changed successfully'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    } else {
+      setState(() {
+        _submitting = false;
+        _error = auth.error ?? 'Failed to change password. Check your current password.';
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Row(
+        children: const <Widget>[
+          Icon(Icons.lock_outline, color: AppColors.navy),
+          SizedBox(width: 10),
+          Text('Change Password', style: AppText.sectionTitle),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            if (_error != null) ...<Widget>[
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: AppColors.danger.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.danger),
+                ),
+                child: Text(
+                  _error!,
+                  style: const TextStyle(color: AppColors.danger, fontSize: 13),
+                ),
+              ),
+              const SizedBox(height: 14),
+            ],
+            AppTextField(
+              label: 'Current Password',
+              required: true,
+              controller: _currentPasswordController,
+              obscureText: _obscureCurrent,
+              suffixIcon: IconButton(
+                icon: Icon(_obscureCurrent ? Icons.visibility_off : Icons.visibility, size: 20),
+                onPressed: () => setState(() => _obscureCurrent = !_obscureCurrent),
+              ),
+            ),
+            const SizedBox(height: 14),
+            AppTextField(
+              label: 'New Password',
+              required: true,
+              controller: _newPasswordController,
+              obscureText: _obscureNew,
+              suffixIcon: IconButton(
+                icon: Icon(_obscureNew ? Icons.visibility_off : Icons.visibility, size: 20),
+                onPressed: () => setState(() => _obscureNew = !_obscureNew),
+              ),
+            ),
+            const SizedBox(height: 14),
+            AppTextField(
+              label: 'Confirm New Password',
+              required: true,
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirm,
+              suffixIcon: IconButton(
+                icon: Icon(_obscureConfirm ? Icons.visibility_off : Icons.visibility, size: 20),
+                onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: <Widget>[
+        TextButton(
+          onPressed: _submitting ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _submitting ? null : _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.navy,
+            foregroundColor: Colors.white,
+          ),
+          child: _submitting
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text('Change Password'),
+        ),
+      ],
     );
   }
 }

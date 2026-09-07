@@ -16,6 +16,8 @@ abstract class AuthRepository {
   Future<Inspector> signIn({required String inspectorId, required String password});
 
   Future<void> signOut();
+
+  Future<void> changePassword({required String currentPassword, required String newPassword});
 }
 
 /// Prototype authentication against the seeded officer record.
@@ -51,6 +53,11 @@ class MockAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     await Future<void>.delayed(const Duration(milliseconds: 200));
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
   }
 }
 
@@ -112,5 +119,14 @@ class ApiAuthRepository implements AuthRepository {
   @override
   Future<void> signOut() async {
     _client.setAuthToken(null);
+  }
+
+  @override
+  Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+    try {
+      await _client.changePassword(currentPassword, newPassword);
+    } on ApiException catch (exception) {
+      throw AuthException(exception.message);
+    }
   }
 }

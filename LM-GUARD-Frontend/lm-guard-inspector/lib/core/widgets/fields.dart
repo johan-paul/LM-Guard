@@ -20,6 +20,8 @@ class AppTextField extends StatelessWidget {
     this.onChanged,
     this.enabled = true,
     this.prefixIcon,
+    this.suffixIcon,
+    this.obscureText = false,
   });
 
   final String label;
@@ -33,6 +35,8 @@ class AppTextField extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final bool enabled;
   final IconData? prefixIcon;
+  final Widget? suffixIcon;
+  final bool obscureText;
 
   @override
   Widget build(BuildContext context) {
@@ -50,12 +54,14 @@ class AppTextField extends StatelessWidget {
           textCapitalization: textCapitalization,
           onChanged: onChanged,
           enabled: enabled,
+          obscureText: obscureText,
           style: AppText.body,
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: prefixIcon == null
                 ? null
                 : Icon(prefixIcon, size: 18, color: AppColors.inkFaint),
+            suffixIcon: suffixIcon,
           ),
         ),
         if (helperText != null) ...<Widget>[

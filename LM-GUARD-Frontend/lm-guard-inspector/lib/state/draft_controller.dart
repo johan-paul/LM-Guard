@@ -132,6 +132,29 @@ class DraftController extends ChangeNotifier {
     _markDirty();
   }
 
+  void updateProductName(String name) {
+    final String trimmed = name.trim();
+    if (trimmed.isEmpty) return;
+    final Product current = _inspection.product ?? Product(
+      id: 'PRD-FIELD-${DateTime.now().millisecondsSinceEpoch}',
+      name: trimmed,
+      brand: '',
+      manufacturer: '',
+      category: 'General',
+      batchNumber: '',
+      manufacturedOn: DateTime.now(),
+      expiresOn: DateTime.now().add(const Duration(days: 365)),
+      barcode: '',
+      netQuantity: '',
+      mrp: '',
+    );
+    _inspection = _inspection.copyWith(
+      product: current.copyWith(name: trimmed),
+      updatedAt: DateTime.now(),
+    );
+    _markDirty();
+  }
+
   bool get informationComplete =>
       _inspection.establishment.trim().isNotEmpty &&
       _inspection.location.trim().isNotEmpty;
@@ -266,10 +289,13 @@ class DraftController extends ChangeNotifier {
         _aiError = _aiEvaluation!.message;
       } else {
         if (_aiEvaluation!.identifiedProduct != null) {
-          // The backend identifies the product from the photo itself - there
-          // is no manual identification step to have set this beforehand.
+          final String existingName = _inspection.product?.name ?? '';
+          final Product aiProduct = _aiEvaluation!.identifiedProduct!;
+          final Product merged = (existingName.isNotEmpty && existingName != 'Product not identified')
+              ? aiProduct.copyWith(name: existingName)
+              : aiProduct;
           _inspection = _inspection.copyWith(
-            product: _aiEvaluation!.identifiedProduct,
+            product: merged,
             updatedAt: DateTime.now(),
           );
         }

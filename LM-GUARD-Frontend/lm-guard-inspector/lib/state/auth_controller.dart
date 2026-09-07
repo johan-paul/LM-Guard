@@ -48,6 +48,29 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<bool> changePassword(String currentPassword, String newPassword) async {
+    _busy = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _repository.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+      return true;
+    } on AuthException catch (exception) {
+      _error = exception.message;
+      return false;
+    } catch (_) {
+      _error = 'Password change could not be completed. Check current password.';
+      return false;
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
   void clearError() {
     if (_error == null) return;
     _error = null;

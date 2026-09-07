@@ -81,6 +81,13 @@ class ApiClient {
     return _unwrap(response);
   }
 
+  Future<void> changePassword(String currentPassword, String newPassword) async {
+    await post(ApiRoutes.changePassword, <String, dynamic>{
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
+    });
+  }
+
   Future<dynamic> put(String path, Map<String, dynamic> body) async {
     final http.Response response = await _client.put(
       _uri(path),
@@ -174,6 +181,7 @@ class ApiRoutes {
   static const String login = '/auth/login';
   static const String register = '/auth/register';
   static const String me = '/auth/me';
+  static const String changePassword = '/auth/change-password';
   static const String inspections = '/inspections';
   static const String products = '/products';
   static const String rules = '/rules';

@@ -78,4 +78,13 @@ public class AuthController {
     public ResponseEntity<ApiResponse<UserResponse>> me() {
         return ResponseEntity.ok(ApiResponse.success(authService.currentUser(SecurityUtils.currentUserId())));
     }
+
+    @PostMapping("/change-password")
+    @SecurityRequirement(name = "bearerAuth")
+    @Operation(summary = "Change password for the authenticated user")
+    public ResponseEntity<ApiResponse<Void>> changePassword(
+            @Valid @RequestBody com.lmguard.dto.auth.ChangePasswordRequest request) {
+        authService.changePassword(SecurityUtils.currentUserId(), request);
+        return ResponseEntity.ok(ApiResponse.success("Password changed successfully", null));
+    }
 }
