@@ -22,7 +22,7 @@ from typing import Optional
 import cv2
 import httpx
 import numpy as np
-from PIL import Image as PILImage, ImageOps
+from PIL import Image as PILImage
 
 from . import normalization, vlm
 from .confidence import ConfidenceInputs, fuse
@@ -43,32 +43,64 @@ def fetch_image(image_url: str) -> bytes:
         return response.content
 
 
+_EXIF_ORIENTATION_TAG = 0x0112  # standard EXIF tag id for "Orientation"
+
+
+def _read_exif_orientation(image_bytes: bytes) -> int:
+    """Reads just the EXIF Orientation tag - deliberately metadata-only, never a pixel decode.
+
+    `Image.open()` is lazy in Pillow; `getexif()` only parses the header, so this never invokes
+    Pillow's own JPEG pixel decoder. That distinction matters: running Pillow's full decode (via
+    `.convert()`/`np.array()`) back to back with OpenCV's `cv2.imdecode` on the same request was
+    crashing the ai-service worker outright on Render's Linux containers - a bare 502 with no
+    Python traceback, consistent with the two libraries' independently-bundled libjpeg builds
+    colliding at the native level. Reading only the header sidesteps that entirely.
+    """
+    try:
+        with PILImage.open(io.BytesIO(image_bytes)) as pil_image:
+            return pil_image.getexif().get(_EXIF_ORIENTATION_TAG, 1)
+    except Exception:  # noqa: BLE001 - no/corrupt EXIF header: treat as already upright
+        return 1
+
+
+def _apply_exif_orientation(image_bgr: np.ndarray, orientation: int) -> np.ndarray:
+    """Applies the rotation/flip an EXIF orientation value (1-8) implies, via cv2 alone."""
+    if orientation == 2:
+        return cv2.flip(image_bgr, 1)
+    if orientation == 3:
+        return cv2.rotate(image_bgr, cv2.ROTATE_180)
+    if orientation == 4:
+        return cv2.flip(image_bgr, 0)
+    if orientation == 5:
+        return cv2.transpose(image_bgr)
+    if orientation == 6:
+        return cv2.rotate(image_bgr, cv2.ROTATE_90_CLOCKWISE)
+    if orientation == 7:
+        return cv2.transpose(cv2.rotate(image_bgr, cv2.ROTATE_180))
+    if orientation == 8:
+        return cv2.rotate(image_bgr, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return image_bgr
+
+
 def decode_image(image_bytes: bytes) -> np.ndarray:
     """Decodes to a BGR array, upright.
 
     Phone/browser cameras routinely save a JPEG with the sensor's native (often sideways or
     upside-down) pixel data plus an EXIF orientation tag telling a viewer how to rotate it for
     display -- they do not bake the rotation into the pixels themselves. `cv2.imdecode` ignores
-    that tag entirely, so without this step OCR, Gemini and every bounding box downstream would
-    all be computed against a rotated frame while the app itself displays the same JPEG the
+    that tag entirely, so without correcting for it OCR, Gemini and every bounding box downstream
+    would all be computed against a rotated frame while the app itself displays the same JPEG the
     right way up (browsers and Flutter's own image codec both honour EXIF orientation on
     display) -- a silent mismatch between what the pipeline "sees" and what the inspector sees,
     which both degrades text recognition (rotated text reads far worse) and throws off every
-    evidence rectangle. `ImageOps.exif_transpose` bakes the rotation into the pixels and drops
-    the tag, so everything from here on operates in the same upright frame the app renders.
+    evidence rectangle. Pixel decoding itself stays on the single cv2.imdecode path already in
+    production use; see _read_exif_orientation for why Pillow is only asked to read the header.
     """
-    try:
-        with PILImage.open(io.BytesIO(image_bytes)) as pil_image:
-            upright = ImageOps.exif_transpose(pil_image)
-            rgb = np.array(upright.convert("RGB"))
-        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
-    except Exception:  # noqa: BLE001 - fall back to the old path for anything PIL can't open
-        logger.warning("EXIF-aware decode failed; falling back to raw cv2.imdecode", exc_info=True)
-        array = np.frombuffer(image_bytes, dtype=np.uint8)
-        image = cv2.imdecode(array, cv2.IMREAD_COLOR)
-        if image is None:
-            raise ValueError("Could not decode image bytes (unsupported or corrupt format)")
-        return image
+    array = np.frombuffer(image_bytes, dtype=np.uint8)
+    image = cv2.imdecode(array, cv2.IMREAD_COLOR)
+    if image is None:
+        raise ValueError("Could not decode image bytes (unsupported or corrupt format)")
+    return _apply_exif_orientation(image, _read_exif_orientation(image_bytes))
 
 
 def _encode_jpeg(image_bgr: np.ndarray) -> bytes:
