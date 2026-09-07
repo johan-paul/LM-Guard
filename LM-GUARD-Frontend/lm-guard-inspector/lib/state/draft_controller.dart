@@ -208,12 +208,12 @@ class DraftController extends ChangeNotifier {
       _inspection.checklist.every((ChecklistItem item) => item.isAnswered);
 
   /// Uploads the captured package photo (if not already uploaded) and runs
-  /// the backend's AI/rule-engine analysis, storing the result as an
-  /// advisory suggestion per checklist line. Never writes to the checklist
-  /// itself - the inspector must call [acceptAiSuggestion] (or decide
-  /// manually) for that. This is the one path that actually populates AI
-  /// suggestions: without a package photo, the backend has nothing to
-  /// analyse and every checklist line stays purely manual.
+  /// the backend's AI/rule-engine analysis. Every checklist line the AI has
+  /// an assessment for is filled in with that result immediately - the
+  /// officer reviews and corrects, rather than starting from a blank
+  /// checklist and accepting suggestions one at a time. This is the one path
+  /// that actually populates the checklist: without a package photo, the
+  /// backend has nothing to analyse and every line stays unanswered.
   Future<void> runAiEvaluation() async {
     if (!packagePhotoCaptured) return;
 
@@ -229,11 +229,25 @@ class DraftController extends ChangeNotifier {
       _aiStatus = _aiEvaluation!.evaluationStatus;
       if (_aiStatus == AiEvaluationStatus.failed) {
         _aiError = _aiEvaluation!.message;
-      } else if (_aiEvaluation!.identifiedProduct != null) {
-        // The backend identifies the product from the photo itself - there is
-        // no manual identification step to have set this beforehand.
+      } else {
+        if (_aiEvaluation!.identifiedProduct != null) {
+          // The backend identifies the product from the photo itself - there
+          // is no manual identification step to have set this beforehand.
+          _inspection = _inspection.copyWith(
+            product: _aiEvaluation!.identifiedProduct,
+            updatedAt: DateTime.now(),
+          );
+        }
         _inspection = _inspection.copyWith(
-          product: _aiEvaluation!.identifiedProduct,
+          checklist: _inspection.checklist.map((ChecklistItem item) {
+            final AiChecklistResult? suggestion = _aiEvaluation!.checklistResults
+                .cast<AiChecklistResult?>()
+                .firstWhere((AiChecklistResult? r) => r?.ruleId == item.ruleRef, orElse: () => null);
+            if (suggestion == null || suggestion.aiSuggestedStatus == CheckResult.notApplicable) {
+              return item;
+            }
+            return item.copyWith(result: suggestion.aiSuggestedStatus);
+          }).toList(),
           updatedAt: DateTime.now(),
         );
       }

@@ -562,6 +562,33 @@ class ApiInspectionRepository implements InspectionRepository {
 
     final Map<String, dynamic>? product = json['product'] as Map<String, dynamic>?;
 
+    final List<AiViolationEvidence> violationEvidence = violations.cast<Map<String, dynamic>>().map(
+      (Map<String, dynamic> v) {
+        final Map<String, dynamic>? evidence = v['evidence'] as Map<String, dynamic>?;
+        final num? x = evidence?['x'] as num?;
+        final num? y = evidence?['y'] as num?;
+        final num? width = evidence?['width'] as num?;
+        final num? height = evidence?['height'] as num?;
+        final bool hasRegion = x != null && y != null && width != null && height != null;
+        return AiViolationEvidence(
+          ruleCode: v['ruleCode'] as String? ?? '',
+          fieldName: v['fieldName'] as String? ?? '',
+          finding: v['finding'] as String? ?? 'A possible issue was detected.',
+          severity: v['severity'] as String? ?? 'MAJOR',
+          remediation: v['remediation'] as String?,
+          confidence: (v['decisionConfidence'] as num?)?.toDouble() ?? 0,
+          boundingBox: hasRegion
+              ? AiBoundingBox(
+                  x: x.toDouble(),
+                  y: y.toDouble(),
+                  width: width.toDouble(),
+                  height: height.toDouble(),
+                )
+              : null,
+        );
+      },
+    ).toList();
+
     return AIEvaluation(
       inspectionId: inspectionId,
       evaluationStatus: AiEvaluationStatus.completed,
@@ -569,6 +596,8 @@ class ApiInspectionRepository implements InspectionRepository {
       evaluatedAt: DateTime.tryParse(json['analyzedAt'] as String? ?? ''),
       checklistResults: results,
       identifiedProduct: product == null ? null : _productFromJson(product),
+      packageImageUrl: json['imageUrl'] as String?,
+      violations: violationEvidence,
     );
   }
 

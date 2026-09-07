@@ -23,6 +23,53 @@ class AiChecklistResult {
   final String? detectedIssue;
 }
 
+/// Pixel region of the package image a piece of evidence points to, in the
+/// original photo's own coordinate space - a display widget must scale this
+/// against the image's natural size, not whatever size it happens to render
+/// at.
+class AiBoundingBox {
+  const AiBoundingBox({
+    required this.x,
+    required this.y,
+    required this.width,
+    required this.height,
+  });
+
+  final double x;
+  final double y;
+  final double width;
+  final double height;
+}
+
+/// One rule violation the backend's rule engine raised from the AI's reading
+/// of the package - the evidence behind a finding, not something the officer
+/// captured. [boundingBox] is null when the violation is an absence (nothing
+/// on the package to point a rectangle at, e.g. a missing declaration) rather
+/// than a present-but-wrong value.
+class AiViolationEvidence {
+  const AiViolationEvidence({
+    required this.ruleCode,
+    required this.fieldName,
+    required this.finding,
+    required this.severity,
+    this.remediation,
+    this.confidence = 0,
+    this.boundingBox,
+  });
+
+  final String ruleCode;
+  final String fieldName;
+  final String finding;
+  /// Raw backend value (MINOR/MAJOR/CRITICAL) - kept as-is rather than mapped
+  /// onto the app's own 4-value Severity enum, which uses a different wire
+  /// vocabulary (LOW/MEDIUM/HIGH/CRITICAL) and would need a lossy guess at
+  /// the mapping between the two.
+  final String severity;
+  final String? remediation;
+  final double confidence;
+  final AiBoundingBox? boundingBox;
+}
+
 /// Result of running the backend's AI/rule-engine analysis for the package
 /// image attached to an inspection. [checklistResults] is derived client-side
 /// from the backend's violations list, matched to the checklist by rule
@@ -36,6 +83,8 @@ class AIEvaluation {
     this.modelVersion,
     this.message,
     this.identifiedProduct,
+    this.packageImageUrl,
+    this.violations = const <AiViolationEvidence>[],
   });
 
   final String inspectionId;
@@ -49,6 +98,15 @@ class AIEvaluation {
   /// is no separate manual identification step any more. Null only while no
   /// analysis has completed yet.
   final Product? identifiedProduct;
+
+  /// The analysed package photo - what [violations]' bounding boxes are
+  /// drawn over.
+  final String? packageImageUrl;
+
+  /// Every rule violation the rule engine raised, each carrying its own
+  /// evidence region - this is what the Evidence step renders. The AI/rule
+  /// engine produces this; nothing here is captured by the officer.
+  final List<AiViolationEvidence> violations;
 
   int get flaggedCount =>
       checklistResults.where((AiChecklistResult r) => r.aiSuggestedStatus == CheckResult.nonCompliant).length;

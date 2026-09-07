@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 
 import '../../core/config/app_config.dart';
 
@@ -112,13 +113,23 @@ class ApiClient {
   Future<dynamic> uploadFile(String path, String filePath,
       {String field = 'file', Map<String, String>? query}) async {
     final Uri uri = query == null ? _uri(path) : _uri(path).replace(queryParameters: query);
-    final http.MultipartFile file = kIsWeb
-        ? http.MultipartFile.fromBytes(
-            field,
-            (await http.get(Uri.parse(filePath))).bodyBytes,
-            filename: 'upload.jpg',
-          )
-        : await http.MultipartFile.fromPath(field, filePath);
+    http.MultipartFile file;
+    if (kIsWeb) {
+      final http.Response blob = await http.get(Uri.parse(filePath));
+      // The blob carries the original file's real MIME type (browsers set this
+      // from the picked file's own type) - MultipartFile.fromBytes otherwise
+      // defaults to application/octet-stream, which the backend's image-type
+      // validation rejects outright.
+      final String? contentType = blob.headers['content-type'];
+      file = http.MultipartFile.fromBytes(
+        field,
+        blob.bodyBytes,
+        filename: 'upload.jpg',
+        contentType: contentType != null ? MediaType.parse(contentType) : null,
+      );
+    } else {
+      file = await http.MultipartFile.fromPath(field, filePath);
+    }
     final http.MultipartRequest request = http.MultipartRequest('POST', uri)
       ..headers.addAll(<String, String>{
         if (_authToken != null) 'Authorization': 'Bearer $_authToken',

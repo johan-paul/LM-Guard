@@ -17,6 +17,10 @@ dependencies:
 
   # REST client for the Spring Boot backend (POST /auth/login, GET /auth/me).
   http: ^1.2.0
+  # MediaType for tagging multipart uploads with their real content type -
+  # http's MultipartFile defaults to application/octet-stream otherwise,
+  # which the backend's image-type validation rejects outright.
+  http_parser: ^4.0.2
 
   # Real camera/gallery capture for evidence photos (see CameraEvidenceService).
   image_picker: ^1.1.2
