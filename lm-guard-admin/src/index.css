@@ -1,0 +1,296 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ==========================================================================
+   LM-GUARD DESIGN SYSTEM
+   Regulatory intelligence platform — restrained, dense, evidence-first.
+   ========================================================================== */
+
+@layer base {
+  :root {
+    --lmg-sidebar: 260px;
+    --lmg-header: 60px;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
+  }
+
+  /* Figures always align in columns */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply text-ink-900 font-semibold tracking-tight;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand-600/40 ring-offset-2 ring-offset-canvas rounded-sm;
+  }
+
+  ::selection {
+    @apply bg-brand-100 text-navy-900;
+  }
+}
+
+@layer components {
+  /* ---------- Surfaces ---------- */
+  .panel {
+    @apply bg-surface border border-line rounded-xl shadow-card;
+  }
+
+  .panel-flush {
+    @apply bg-surface border border-line rounded-xl shadow-card overflow-hidden;
+  }
+
+  .panel-header {
+    @apply flex items-start justify-between gap-4 px-5 py-4 border-b border-line;
+  }
+
+  .panel-title {
+    @apply text-[15px] font-semibold text-ink-900 tracking-tight;
+  }
+
+  .panel-subtitle {
+    @apply text-xs text-ink-500 mt-0.5;
+  }
+
+  /* ---------- Micro labels ---------- */
+  .eyebrow {
+    @apply text-micro font-semibold uppercase text-ink-500;
+  }
+
+  .field-label {
+    @apply block text-micro font-semibold uppercase text-ink-500 mb-1.5;
+  }
+
+  .mono-id {
+    @apply font-mono text-13 text-ink-700 tracking-tight;
+  }
+
+  /* ---------- Buttons ---------- */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 h-9 px-3.5 rounded-md text-13 font-medium
+           transition-colors duration-150 whitespace-nowrap disabled:opacity-45 disabled:cursor-not-allowed;
+  }
+
+  .btn-lg {
+    @apply h-10 px-4 text-sm;
+  }
+
+  .btn-sm {
+    @apply h-8 px-2.5 text-xs gap-1.5;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand-600 text-white hover:bg-brand-700 shadow-card;
+  }
+
+  .btn-secondary {
+    @apply btn bg-surface text-ink-700 border border-line-strong hover:bg-canvas hover:text-ink-900;
+  }
+
+  .btn-navy {
+    @apply btn bg-navy-900 text-white hover:bg-navy-800;
+  }
+
+  .btn-ghost {
+    @apply btn text-ink-500 hover:text-ink-900 hover:bg-canvas;
+  }
+
+  .btn-danger {
+    @apply btn bg-danger-600 text-white hover:bg-danger-700;
+  }
+
+  .btn-danger-quiet {
+    @apply btn bg-surface text-danger-600 border border-danger-100 hover:bg-danger-50;
+  }
+
+  .btn-success-quiet {
+    @apply btn bg-surface text-success-700 border border-success-100 hover:bg-success-50;
+  }
+
+  /* ---------- Inputs ---------- */
+  .input {
+    @apply h-9 w-full bg-surface border border-line-strong rounded-md px-3 text-13 text-ink-900
+           placeholder:text-ink-400 transition-colors
+           focus:border-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-600/15;
+  }
+
+  .input-lg {
+    @apply h-10 text-sm;
+  }
+
+  .select {
+    @apply input pr-8 appearance-none bg-no-repeat cursor-pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23667085' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 10px center;
+  }
+
+  /* ---------- Badges ---------- */
+  .badge {
+    @apply inline-flex items-center gap-1.5 h-[22px] px-2 rounded-sm border text-micro font-semibold uppercase whitespace-nowrap;
+  }
+
+  .badge-lg {
+    @apply h-7 px-2.5 text-label;
+  }
+
+  .tag {
+    @apply inline-flex items-center gap-1 h-[22px] px-2 rounded-sm bg-canvas border border-line
+           text-[11px] font-medium text-ink-700 whitespace-nowrap;
+  }
+
+  /* ---------- Data tables ---------- */
+  .table-wrap {
+    @apply w-full overflow-x-auto;
+  }
+
+  .data-table {
+    @apply w-full min-w-full border-collapse text-13;
+  }
+
+  .data-table thead th {
+    @apply bg-canvas/70 border-y border-line px-4 py-2.5 text-left text-micro font-semibold uppercase
+           text-ink-500 whitespace-nowrap first:pl-5 last:pr-5;
+  }
+
+  .data-table tbody td {
+    @apply border-b border-line-soft px-4 py-3 align-middle text-ink-700 first:pl-5 last:pr-5;
+  }
+
+  .data-table tbody tr {
+    @apply transition-colors duration-100;
+  }
+
+  .data-table tbody tr:hover {
+    @apply bg-canvas/80;
+  }
+
+  .data-table tbody tr:last-child td {
+    @apply border-b-0;
+  }
+
+  .row-link {
+    @apply cursor-pointer;
+  }
+
+  /* ---------- Sidebar navigation ---------- */
+  .nav-item {
+    @apply relative flex items-center gap-3 h-9 px-3 rounded-md text-13 font-medium
+           text-navy-100/70 transition-colors duration-150;
+  }
+
+  .nav-item:hover {
+    @apply text-white bg-white/[0.06];
+  }
+
+  .nav-item-active {
+    @apply text-white bg-brand-600/15;
+  }
+
+  .nav-item-active::before {
+    content: '';
+    @apply absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-brand-500;
+  }
+
+  /* ---------- Misc primitives ---------- */
+  .divider {
+    @apply h-px w-full bg-line;
+  }
+
+  .skeleton {
+    @apply bg-line-soft rounded animate-pulse-soft;
+  }
+
+  .link-quiet {
+    @apply text-brand-600 hover:text-brand-700 font-medium transition-colors;
+  }
+}
+
+@layer utilities {
+  .scrollbar-slim::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb {
+    background: #d0d5dd;
+    border-radius: 999px;
+  }
+
+  .scrollbar-slim::-webkit-scrollbar-thumb:hover {
+    background: #b4bac6;
+  }
+
+  .grid-lines {
+    background-image: linear-gradient(rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px);
+    background-size: 32px 32px;
+  }
+}
+
+/* Global scrollbars */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #f0f2f6;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d0d5dd;
+  border-radius: 999px;
+  border: 2px solid #f0f2f6;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #b4bac6;
+}
+
+/* Recharts refinements */
+.recharts-cartesian-axis-tick text {
+  font-size: 11px;
+  fill: #667085;
+}
+
+.recharts-default-tooltip {
+  border-radius: 8px !important;
+  border: 1px solid #e4e7ec !important;
+  box-shadow: 0 8px 24px -4px rgba(11, 31, 51, 0.1) !important;
+  font-size: 12px !important;
+}
+
+.recharts-surface:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
