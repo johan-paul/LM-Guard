@@ -50,7 +50,7 @@ export default function InspectorManagement() {
   const [status, setStatus] = useState('ALL');
 
   const debouncedSearch = useDebounced(search);
-  const { inspectors, loading, refetch } = useInspectors({ search: debouncedSearch, zone, status });
+  const { inspectors, loading, error, refetch } = useInspectors({ search: debouncedSearch, zone, status });
   const { zones, loading: zonesLoading, refetch: refetchZones } = useZoneSummary();
   const zoneNames = useMemo(() => zones.map((z) => z.name), [zones]);
   const pager = usePagination(inspectors, 8);
@@ -146,6 +146,18 @@ export default function InspectorManagement() {
           </>
         }
       />
+
+      {error && (
+        <div className="flex items-center gap-3 rounded-lg border border-danger-200 bg-danger-50 px-4 py-3">
+          <AlertCircle className="h-4 w-4 shrink-0 text-danger-600" strokeWidth={2} />
+          <p className="flex-1 text-13 text-danger-700">
+            Couldn't load the inspector directory ({error}). The backend may still be starting up.
+          </p>
+          <button type="button" onClick={refreshAll} className="btn-secondary btn-sm">
+            Retry
+          </button>
+        </div>
+      )}
 
       {/* Roster summary */}
       <div className="grid grid-cols-2 divide-line rounded-xl border border-line bg-surface shadow-card sm:grid-cols-4 sm:divide-x">
