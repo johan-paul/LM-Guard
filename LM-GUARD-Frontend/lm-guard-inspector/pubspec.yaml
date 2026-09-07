@@ -1,0 +1,30 @@
+name: lm_guard_inspector
+description: LM-GUARD Inspector — field inspection application for Legal Metrology inspecting officers.
+publish_to: "none"
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management. Date formatting and everything else is implemented
+  # locally so the project resolves cleanly on any recent Flutter SDK.
+  provider: ^6.1.2
+
+  # REST client for the Spring Boot backend (POST /auth/login, GET /auth/me).
+  http: ^1.2.0
+
+  # Real camera/gallery capture for evidence photos (see CameraEvidenceService).
+  image_picker: ^1.1.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true

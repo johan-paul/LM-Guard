@@ -1,0 +1,35 @@
+# --- lm-guard-admin (React / Vite) ---
+lm-guard-admin/node_modules/
+lm-guard-admin/dist/
+lm-guard-admin/.vite/
+lm-guard-admin/.env
+lm-guard-admin/*.local
+
+# --- lm-guard-inspector (Flutter) ---
+lm-guard-inspector/build/
+lm-guard-inspector/.dart_tool/
+lm-guard-inspector/.flutter-plugins
+lm-guard-inspector/.flutter-plugins-dependencies
+lm-guard-inspector/.packages
+lm-guard-inspector/.idea/
+lm-guard-inspector/**/ephemeral/
+
+# --- editor / OS noise ---
+.DS_Store
+Thumbs.db
+
+# Flutter
+.dart_tool/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Dart
+.packages
+
+# Environment
+.env
+
+# Chrome generated files
+lm-guard-inspector/.dart_tool/
+lm-guard-inspector/build/
