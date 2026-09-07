@@ -420,7 +420,7 @@ class _QuickActions extends StatelessWidget {
               label: 'Scan product',
               onTap: () => openInspectionWorkflow(
                 context,
-                initialStep: InspectionStep.product,
+                initialStep: InspectionStep.scan,
               ),
             ),
           ],

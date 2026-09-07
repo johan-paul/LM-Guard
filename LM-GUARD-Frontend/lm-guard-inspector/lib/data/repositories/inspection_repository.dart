@@ -22,10 +22,6 @@ abstract class InspectionRepository {
 
   Future<Inspection?> fetchInspection(String id);
 
-  Future<List<Product>> searchProducts(String query);
-
-  Future<Product?> lookupBarcode(String barcode);
-
   Future<List<RuleReference>> fetchRules();
 
   Future<Inspection> saveDraft(Inspection inspection);
@@ -86,29 +82,6 @@ class MockInspectionRepository implements InspectionRepository {
     await Future<void>.delayed(const Duration(milliseconds: 180));
     for (final Inspection inspection in _store) {
       if (inspection.id == id) return inspection;
-    }
-    return null;
-  }
-
-  @override
-  Future<List<Product>> searchProducts(String query) async {
-    await Future<void>.delayed(const Duration(milliseconds: 260));
-    final String needle = query.trim().toLowerCase();
-    if (needle.isEmpty) return MockData.catalogue();
-    return MockData.catalogue().where((Product product) {
-      return product.name.toLowerCase().contains(needle) ||
-          product.brand.toLowerCase().contains(needle) ||
-          product.manufacturer.toLowerCase().contains(needle) ||
-          product.barcode.contains(needle);
-    }).toList();
-  }
-
-  @override
-  Future<Product?> lookupBarcode(String barcode) async {
-    await Future<void>.delayed(const Duration(milliseconds: 900));
-    final String needle = barcode.trim();
-    for (final Product product in MockData.catalogue()) {
-      if (product.barcode == needle) return product;
     }
     return null;
   }
@@ -214,6 +187,7 @@ class MockInspectionRepository implements InspectionRepository {
                 explanation: 'No issue detected (mock evaluation).',
               ))
           .toList(),
+      identifiedProduct: MockData.biscuits,
     );
   }
 
@@ -346,25 +320,6 @@ class ApiInspectionRepository implements InspectionRepository {
         imageUrl: r['imageUrl'] as String?,
       );
     }).toList();
-  }
-
-  @override
-  Future<List<Product>> searchProducts(String query) async {
-    final Map<String, dynamic> page = await _client.get(
-      _withQuery(ApiRoutes.products, <String, String>{'search': query, 'size': '20'}),
-    ) as Map<String, dynamic>;
-    final List<dynamic> items = page['items'] as List<dynamic>? ?? <dynamic>[];
-    return items.map((dynamic json) => _productFromJson(json as Map<String, dynamic>)).toList();
-  }
-
-  @override
-  Future<Product?> lookupBarcode(String barcode) async {
-    final String needle = barcode.trim();
-    final List<Product> results = await searchProducts(needle);
-    for (final Product product in results) {
-      if (product.barcode == needle) return product;
-    }
-    return null;
   }
 
   @override
@@ -605,12 +560,15 @@ class ApiInspectionRepository implements InspectionRepository {
       );
     }).toList();
 
+    final Map<String, dynamic>? product = json['product'] as Map<String, dynamic>?;
+
     return AIEvaluation(
       inspectionId: inspectionId,
       evaluationStatus: AiEvaluationStatus.completed,
       modelVersion: json['aiProvider'] as String?,
       evaluatedAt: DateTime.tryParse(json['analyzedAt'] as String? ?? ''),
       checklistResults: results,
+      identifiedProduct: product == null ? null : _productFromJson(product),
     );
   }
 

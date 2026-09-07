@@ -5,10 +5,12 @@ import com.lmguard.ai.AIAnalysisService;
 import com.lmguard.ai.ExtractedFact;
 import com.lmguard.config.properties.RulesProperties;
 import com.lmguard.dto.inspection.InspectionResponse;
+import com.lmguard.dto.product.ProductCreateRequest;
 import com.lmguard.entity.Evidence;
 import com.lmguard.entity.ExtractedField;
 import com.lmguard.entity.Inspection;
 import com.lmguard.entity.OnlineListing;
+import com.lmguard.entity.Product;
 import com.lmguard.entity.RiskScore;
 import com.lmguard.entity.Violation;
 import com.lmguard.entity.enums.ComplianceStatus;
@@ -121,11 +123,6 @@ public class InspectionAnalysisService {
         Inspection inspection = inspectionRepository.findDetailedById(inspectionId)
                 .orElseThrow(() -> ResourceNotFoundException.of(ErrorCode.INSPECTION_NOT_FOUND, inspectionId));
 
-        if (inspection.getProduct() == null) {
-            throw new BadRequestException(ErrorCode.PRODUCT_REQUIRED,
-                    "Identify a product with PATCH /api/inspections/%s/product before analysing"
-                            .formatted(inspectionId));
-        }
         if (inspection.getImageUrl() == null || inspection.getImageUrl().isBlank()) {
             throw new BadRequestException(ErrorCode.IMAGE_REQUIRED,
                     "Upload a package image with POST /api/inspections/%s/image before analysing"
@@ -135,6 +132,16 @@ public class InspectionAnalysisService {
         // --- 1. AI: facts only, never a verdict ---
         AIAnalysisResult analysis = aiAnalysisService.analyzeImage(inspection.getImageUrl(), inspectionId);
         inspection.setAiProvider(analysis.provider());
+
+        // --- 1b. identify the product from what the AI actually read on the package. Nobody
+        // types this in by hand any more: an admin-assigned case may already carry a product
+        // (set via PATCH .../product before the officer ever opens it), in which case that
+        // stands - this only fills the gap when analysis is the first thing to touch the
+        // inspection. A commodity name the AI couldn't read still gets a product row (never
+        // block the pipeline on it) - it's just named accordingly and can be corrected later.
+        if (inspection.getProduct() == null) {
+            inspection.setProduct(resolveProductFromAnalysis(analysis));
+        }
 
         // --- 2. persist the observations before judging them ---
         List<ExtractedField> fields = persistExtractedFields(inspection, analysis);
@@ -177,6 +184,25 @@ public class InspectionAnalysisService {
     // ------------------------------------------------------------------
     // Pipeline steps
     // ------------------------------------------------------------------
+
+    /** Registers a new product from the AI's own reading of the package - COMMODITY_NAME and
+     * MANUFACTURER, the two declarations Legal Metrology requires on every principal display
+     * panel. Either can come back not-detected (low OCR confidence, glare, a cropped panel);
+     * this never blocks on that, since a human can always correct the product afterward via
+     * PATCH .../product - it just means an inspector reviewing the case sees "Unidentified
+     * product" instead of a guessed name. */
+    private Product resolveProductFromAnalysis(AIAnalysisResult analysis) {
+        String name = analysis.fact(ProductField.COMMODITY_NAME)
+                .filter(ExtractedFact::isPresent)
+                .map(ExtractedFact::value)
+                .orElse("Unidentified product");
+        String brand = analysis.fact(ProductField.MANUFACTURER)
+                .filter(ExtractedFact::isPresent)
+                .map(ExtractedFact::value)
+                .orElse(null);
+        UUID createdId = productService.create(new ProductCreateRequest(name, brand, null, null)).id();
+        return productService.requireById(createdId);
+    }
 
     /** Replaces any previous observations, so re-analysing an inspection is idempotent. */
     private List<ExtractedField> persistExtractedFields(Inspection inspection, AIAnalysisResult analysis) {

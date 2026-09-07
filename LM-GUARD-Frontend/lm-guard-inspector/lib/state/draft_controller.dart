@@ -11,10 +11,11 @@ import '../data/models/product_history.dart';
 import '../data/repositories/inspection_repository.dart';
 import '../data/services/evidence_service.dart';
 
-/// The seven recorded stages of a field inspection.
+/// The six recorded stages of a field inspection. There is no manual product
+/// identification stage - the backend identifies the product from the
+/// package photo itself, as part of the scan step's analysis.
 enum InspectionStep {
   information('Inspection information'),
-  product('Product identification'),
   scan('Scan package'),
   checklist('Compliance checklist'),
   evidence('Evidence capture'),
@@ -125,51 +126,27 @@ class DraftController extends ChangeNotifier {
       _inspection.establishment.trim().isNotEmpty &&
       _inspection.location.trim().isNotEmpty;
 
-  /* ---------------- Step 2: product ---------------- */
-
-  /// Attaches the identified product both locally and on the backend - the
-  /// server needs to know the product before AI analysis or product history
-  /// can be requested for this inspection.
-  Future<void> setProduct(Product product) async {
-    _inspection = _inspection.copyWith(product: product, updatedAt: DateTime.now());
-    _markDirty();
-    try {
-      _inspection = await _repository.identifyProduct(_inspection.id, product);
-      notifyListeners();
-    } catch (_) {
-      // Local state already reflects the choice; the next saveDraft()/submit()
-      // retries the sync. Nothing the product step needs to react to here.
-    }
-  }
+  /* ---------------- Product identification ---------------- */
+  //
+  // There is no manual identification step: the backend identifies the
+  // product from the package photo itself (COMMODITY_NAME/MANUFACTURER read
+  // off the image) as part of [runAiEvaluation] and returns it as
+  // AIEvaluation.identifiedProduct, merged onto the inspection there.
 
   /// Product History for the identified product - previous inspections,
-  /// violations and repeats. Throws if no product has been identified yet.
+  /// violations and repeats. Throws if no product has been identified yet
+  /// (i.e. the package hasn't been scanned).
   Future<ProductHistorySummary> fetchProductHistory() {
     final Product? product = _inspection.product;
     if (product == null) {
-      throw StateError('Identify a product before requesting its history');
+      throw StateError('Scan the package before requesting product history');
     }
     return _repository.fetchProductHistory(product.id);
   }
 
-  /// Drops the identified commodity so the officer can select another.
-  void clearProduct() {
-    _inspection = _inspection.copyWith(
-      clearProduct: true,
-      updatedAt: DateTime.now(),
-    );
-    _markDirty();
-  }
-
-  Future<List<Product>> searchProducts(String query) =>
-      _repository.searchProducts(query);
-
-  Future<Product?> lookupBarcode(String barcode) =>
-      _repository.lookupBarcode(barcode);
-
   bool get productIdentified => _inspection.product != null;
 
-  /* ---------------- Step 3: scan the package ---------------- */
+  /* ---------------- Step 2: scan the package ---------------- */
 
   /// Captures the package photograph the AI pipeline analyses, uploads it and
   /// immediately runs the analysis - the inspector's only action is taking
@@ -200,7 +177,7 @@ class DraftController extends ChangeNotifier {
     }
   }
 
-  /* ---------------- Step 4: checklist ---------------- */
+  /* ---------------- Step 3: checklist ---------------- */
 
   void setCheckResult(String itemId, CheckResult result) {
     final List<ChecklistItem> updated = _inspection.checklist
@@ -238,8 +215,6 @@ class DraftController extends ChangeNotifier {
   /// suggestions: without a package photo, the backend has nothing to
   /// analyse and every checklist line stays purely manual.
   Future<void> runAiEvaluation() async {
-    final Product? product = _inspection.product;
-    if (product == null) return;
     if (!packagePhotoCaptured) return;
 
     _aiStatus = AiEvaluationStatus.processing;
@@ -254,6 +229,13 @@ class DraftController extends ChangeNotifier {
       _aiStatus = _aiEvaluation!.evaluationStatus;
       if (_aiStatus == AiEvaluationStatus.failed) {
         _aiError = _aiEvaluation!.message;
+      } else if (_aiEvaluation!.identifiedProduct != null) {
+        // The backend identifies the product from the photo itself - there is
+        // no manual identification step to have set this beforehand.
+        _inspection = _inspection.copyWith(
+          product: _aiEvaluation!.identifiedProduct,
+          updatedAt: DateTime.now(),
+        );
       }
     } catch (exception) {
       _aiStatus = AiEvaluationStatus.failed;
@@ -289,7 +271,7 @@ class DraftController extends ChangeNotifier {
         .firstWhere((AiChecklistResult? r) => r?.ruleId == ruleRef, orElse: () => null);
   }
 
-  /* ---------------- Step 5: evidence ---------------- */
+  /* ---------------- Step 4: evidence ---------------- */
 
   Future<void> captureEvidence({
     required String label,
@@ -357,7 +339,7 @@ class DraftController extends ChangeNotifier {
     _markDirty();
   }
 
-  /* ---------------- Step 6: findings ---------------- */
+  /* ---------------- Step 5: findings ---------------- */
 
   Future<List<RuleReference>> fetchRules() => _repository.fetchRules();
 
@@ -425,7 +407,7 @@ class DraftController extends ChangeNotifier {
         .toList();
   }
 
-  /* ---------------- Step 7: review ---------------- */
+  /* ---------------- Step 6: review ---------------- */
 
   void setOfficerNotes(String notes) {
     _inspection = _inspection.copyWith(

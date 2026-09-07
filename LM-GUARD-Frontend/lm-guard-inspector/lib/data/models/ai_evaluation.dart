@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'product.dart';
 
 /// The rule engine's suggestion for one checklist line - advisory only. The
 /// inspector's own [CheckResult] on that line is a separate, independent
@@ -34,6 +35,7 @@ class AIEvaluation {
     this.evaluatedAt,
     this.modelVersion,
     this.message,
+    this.identifiedProduct,
   });
 
   final String inspectionId;
@@ -42,6 +44,11 @@ class AIEvaluation {
   final DateTime? evaluatedAt;
   final String? modelVersion;
   final String? message;
+
+  /// The product the backend identified from the package photo itself - there
+  /// is no separate manual identification step any more. Null only while no
+  /// analysis has completed yet.
+  final Product? identifiedProduct;
 
   int get flaggedCount =>
       checklistResults.where((AiChecklistResult r) => r.aiSuggestedStatus == CheckResult.nonCompliant).length;
