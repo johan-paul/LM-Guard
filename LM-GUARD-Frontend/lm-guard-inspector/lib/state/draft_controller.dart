@@ -11,10 +11,11 @@ import '../data/models/product_history.dart';
 import '../data/repositories/inspection_repository.dart';
 import '../data/services/evidence_service.dart';
 
-/// The six recorded stages of a field inspection.
+/// The seven recorded stages of a field inspection.
 enum InspectionStep {
   information('Inspection information'),
   product('Product identification'),
+  scan('Scan package'),
   checklist('Compliance checklist'),
   evidence('Evidence capture'),
   findings('Findings & violations'),
@@ -54,6 +55,13 @@ class DraftController extends ChangeNotifier {
   AiEvaluationStatus _aiStatus = AiEvaluationStatus.idle;
   String? _aiError;
 
+  /// On-device path of the captured package photo, kept for local preview
+  /// even after it has been uploaded (only a fresh capture replaces it).
+  String? _packagePhotoPath;
+  /// Set once [_packagePhotoPath] has actually been uploaded - null again
+  /// after a retake, until the new photo is uploaded in turn.
+  String? _uploadedPackageImageUrl;
+
   Inspection get inspection => _inspection;
   InspectionStep get step => _step;
   bool get busy => _busy;
@@ -62,6 +70,9 @@ class DraftController extends ChangeNotifier {
   AIEvaluation? get aiEvaluation => _aiEvaluation;
   AiEvaluationStatus get aiStatus => _aiStatus;
   String? get aiError => _aiError;
+
+  String? get packagePhotoPath => _packagePhotoPath;
+  bool get packagePhotoCaptured => _packagePhotoPath != null;
 
   int get stepNumber => _step.number;
   int get stepCount => InspectionStep.values.length;
@@ -158,7 +169,38 @@ class DraftController extends ChangeNotifier {
 
   bool get productIdentified => _inspection.product != null;
 
-  /* ---------------- Step 3: checklist ---------------- */
+  /* ---------------- Step 3: scan the package ---------------- */
+
+  /// Captures the package photograph the AI pipeline analyses, uploads it and
+  /// immediately runs the analysis - the inspector's only action is taking
+  /// the photo; extraction and rule evaluation follow automatically. A
+  /// retake replaces the previous photo and re-runs analysis the same way.
+  Future<void> capturePackagePhoto({bool fromGallery = false}) async {
+    _busy = true;
+    notifyListeners();
+    EvidenceItem? captured;
+    try {
+      captured = fromGallery
+          ? await _evidenceService.pickFromGallery(label: 'Package photo')
+          : await _evidenceService.capture(label: 'Package photo');
+      if (captured?.filePath != null) {
+        _packagePhotoPath = captured!.filePath;
+        _uploadedPackageImageUrl = null;
+        _aiStatus = AiEvaluationStatus.idle;
+        _aiEvaluation = null;
+        _aiError = null;
+        _dirty = true;
+      }
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+    if (captured?.filePath != null) {
+      await runAiEvaluation();
+    }
+  }
+
+  /* ---------------- Step 4: checklist ---------------- */
 
   void setCheckResult(String itemId, CheckResult result) {
     final List<ChecklistItem> updated = _inspection.checklist
@@ -188,18 +230,26 @@ class DraftController extends ChangeNotifier {
       _inspection.checklist.isNotEmpty &&
       _inspection.checklist.every((ChecklistItem item) => item.isAnswered);
 
-  /// Runs the backend's AI/rule-engine analysis and stores it as an advisory
-  /// suggestion per checklist line. Never writes to the checklist itself -
-  /// the inspector must call [acceptAiSuggestion] (or decide manually) for
-  /// that.
+  /// Uploads the captured package photo (if not already uploaded) and runs
+  /// the backend's AI/rule-engine analysis, storing the result as an
+  /// advisory suggestion per checklist line. Never writes to the checklist
+  /// itself - the inspector must call [acceptAiSuggestion] (or decide
+  /// manually) for that. This is the one path that actually populates AI
+  /// suggestions: without a package photo, the backend has nothing to
+  /// analyse and every checklist line stays purely manual.
   Future<void> runAiEvaluation() async {
     final Product? product = _inspection.product;
     if (product == null) return;
+    if (!packagePhotoCaptured) return;
 
     _aiStatus = AiEvaluationStatus.processing;
     _aiError = null;
     notifyListeners();
     try {
+      if (_uploadedPackageImageUrl == null && _packagePhotoPath != null) {
+        _uploadedPackageImageUrl =
+            await _repository.uploadPackageImage(_inspection.id, _packagePhotoPath!);
+      }
       _aiEvaluation = await _repository.runAiEvaluation(_inspection.id, _inspection.checklist);
       _aiStatus = _aiEvaluation!.evaluationStatus;
       if (_aiStatus == AiEvaluationStatus.failed) {
@@ -239,7 +289,7 @@ class DraftController extends ChangeNotifier {
         .firstWhere((AiChecklistResult? r) => r?.ruleId == ruleRef, orElse: () => null);
   }
 
-  /* ---------------- Step 4: evidence ---------------- */
+  /* ---------------- Step 5: evidence ---------------- */
 
   Future<void> captureEvidence({
     required String label,
@@ -307,7 +357,7 @@ class DraftController extends ChangeNotifier {
     _markDirty();
   }
 
-  /* ---------------- Step 5: findings ---------------- */
+  /* ---------------- Step 6: findings ---------------- */
 
   Future<List<RuleReference>> fetchRules() => _repository.fetchRules();
 
@@ -375,7 +425,7 @@ class DraftController extends ChangeNotifier {
         .toList();
   }
 
-  /* ---------------- Step 6: review ---------------- */
+  /* ---------------- Step 7: review ---------------- */
 
   void setOfficerNotes(String notes) {
     _inspection = _inspection.copyWith(
@@ -393,7 +443,11 @@ class DraftController extends ChangeNotifier {
   }
 
   bool get readyToSubmit =>
-      informationComplete && productIdentified && checklistComplete && _inspection.finalDecision != null;
+      informationComplete &&
+      productIdentified &&
+      packagePhotoCaptured &&
+      checklistComplete &&
+      _inspection.finalDecision != null;
 
   Future<Inspection> saveDraft() async {
     _busy = true;

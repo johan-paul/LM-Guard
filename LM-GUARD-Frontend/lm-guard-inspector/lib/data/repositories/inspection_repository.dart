@@ -59,6 +59,11 @@ abstract class InspectionRepository {
   /// be a real on-device file) and returns the server-persisted record -
   /// its id becomes the one the rest of the app treats as authoritative.
   Future<EvidenceItem> uploadEvidence(String inspectionId, EvidenceItem item);
+
+  /// Uploads the package photograph the AI pipeline analyses - the backend
+  /// refuses to run [runAiEvaluation] until this has been called at least
+  /// once. Returns the stored image's public URL.
+  Future<String> uploadPackageImage(String inspectionId, String filePath);
 }
 
 /// In-memory implementation backed by [MockData].
@@ -216,6 +221,12 @@ class MockInspectionRepository implements InspectionRepository {
   Future<EvidenceItem> uploadEvidence(String inspectionId, EvidenceItem item) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     return item;
+  }
+
+  @override
+  Future<String> uploadPackageImage(String inspectionId, String filePath) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    return filePath;
   }
 
   void _upsert(Inspection inspection) {
@@ -627,6 +638,15 @@ class ApiInspectionRepository implements InspectionRepository {
       filePath: filePath,
       imageUrl: json['imageUrl'] as String?,
     );
+  }
+
+  @override
+  Future<String> uploadPackageImage(String inspectionId, String filePath) async {
+    final Map<String, dynamic> json = await _client.uploadFile(
+      ApiRoutes.uploadImage(inspectionId),
+      filePath,
+    ) as Map<String, dynamic>;
+    return json['imageUrl'] as String? ?? filePath;
   }
 
   // ------------------------------------------------------------------

@@ -15,10 +15,11 @@ import 'steps/findings_step.dart';
 import 'steps/information_step.dart';
 import 'steps/product_step.dart';
 import 'steps/review_step.dart';
+import 'steps/scan_step.dart';
 
 /// The guided field inspection workflow.
 ///
-/// Information → Product → Checklist → Evidence → Findings → Review.
+/// Information → Product → Scan → Checklist → Evidence → Findings → Review.
 class NewInspectionScreen extends StatelessWidget {
   const NewInspectionScreen({
     super.key,
@@ -137,6 +138,8 @@ class _WorkflowView extends StatelessWidget {
         return const InformationStep();
       case InspectionStep.product:
         return const ProductStep();
+      case InspectionStep.scan:
+        return const ScanStep();
       case InspectionStep.checklist:
         return const ChecklistStep();
       case InspectionStep.evidence:
@@ -337,6 +340,8 @@ class _ActionBar extends StatelessWidget {
         return draft.informationComplete;
       case InspectionStep.product:
         return draft.productIdentified;
+      case InspectionStep.scan:
+        return draft.packagePhotoCaptured;
       case InspectionStep.checklist:
       case InspectionStep.evidence:
       case InspectionStep.findings:
