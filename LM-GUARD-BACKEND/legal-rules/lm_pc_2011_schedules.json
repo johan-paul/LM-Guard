@@ -1,0 +1,139 @@
+{
+  "sourceDocument": "The Legal Metrology (Packaged Commodities) Rules, 2011",
+  "extractedFromFile": "9 The Legal Metrology (Package Commodities) Rules, 2011.pdf, pages 28-43",
+  "notes": "Structured data for the seven Schedules. These are reference tables used by rules 5, 11, 12 and 19-23 (see lm_pc_2011_rules.json). None of them are independently 'checkable' from a package photo without either a physical test (First/Fifth/Sixth/Seventh Schedule) or a commodity-category classification the AI layer does not perform with legal certainty (Second/Third/Fourth Schedule) -- classification is surfaced to the human inspector as a suggestion, never as an automated verdict.",
+  "firstSchedule": {
+    "title": "Maximum permissible errors on net quantity",
+    "source": {"rule": "2(e), 22", "page": 28},
+    "tableI_weightOrVolume": {
+      "title": "Maximum permissible error on net quantity declared by weight or volume",
+      "unit": "g or ml",
+      "rows": [
+        {"declaredQuantityRange": "up to 50", "errorAsPercent": 9, "errorAbsolute": null},
+        {"declaredQuantityRange": "50 to 100", "errorAsPercent": null, "errorAbsolute": 4.5},
+        {"declaredQuantityRange": "100 to 200", "errorAsPercent": 4.5, "errorAbsolute": null},
+        {"declaredQuantityRange": "200 to 300", "errorAsPercent": null, "errorAbsolute": 9},
+        {"declaredQuantityRange": "300 to 500", "errorAsPercent": 3, "errorAbsolute": null},
+        {"declaredQuantityRange": "500 to 1000", "errorAsPercent": null, "errorAbsolute": 15},
+        {"declaredQuantityRange": "1000 to 10000", "errorAsPercent": 1.5, "errorAbsolute": null},
+        {"declaredQuantityRange": "10000 to 15000", "errorAsPercent": null, "errorAbsolute": 150},
+        {"declaredQuantityRange": "more than 15000", "errorAsPercent": 1.0, "errorAbsolute": null}
+      ],
+      "rounding": "Percent-based error rounds to the nearest 0.1 g/ml for declared quantities <= 1000 g/ml, and to the next whole g/ml above 1000 g/ml."
+    },
+    "tableII_lengthAreaNumber": {
+      "title": "Maximum permissible error on net quantity declared by length, area or number",
+      "rows": [
+        {"declaredIn": "units of length", "maxError": "2% of declared quantity up to 10 metre, thereafter 1%"},
+        {"declaredIn": "units of area", "maxError": "4% of declared quantity up to 10 sq. metre, thereafter 1%"},
+        {"declaredIn": "number", "maxError": "2% of declared quantity"}
+      ]
+    },
+    "automatable": false,
+    "reason": "Requires opening/weighing/measuring the physical package contents (see Rules 19-22, Sixth Schedule). Can only be used as a REFERENCE TABLE by a human inspector performing a physical check, or by a future feature that ingests declared-vs-measured quantity pairs typed in by an inspector."
+  },
+  "secondSchedule": {
+    "title": "Commodities to be packed in specified (standard) quantities",
+    "source": {"rule": "5", "page": 29},
+    "automatable": "PARTIAL",
+    "reason": "Net quantity is OCR-readable; membership in the standard-size list below is then a deterministic lookup. This is the one Schedule with a genuinely automatable check (STANDARD_PACK_SIZE in lm_pc_2011_rules.json / LM-PC-5), though the mapping from a free-text commodity name to one of these categories still needs a product-category classification step this MVP's AI layer does only as an inference signal, not a guarantee.",
+    "commodities": [
+      {"commodity": "Baby food", "standardSizes": ["100g","200g","300g","400g","500g","600g","700g","800g","900g","1kg","2kg","5kg","10kg"]},
+      {"commodity": "Weaning food", "standardSizes": ["100g","200g","300g","400g","500g","600g","700g","800g","900g","1kg","2kg","5kg","10kg"]},
+      {"commodity": "Biscuits", "standardSizes": ["25g","50g","75g","100g","150g","200g","250g","300g"], "andThereafter": "multiples of 100g up to 1kg"},
+      {"commodity": "Bread including brown bread but excluding bun", "standardSizes": ["100g"], "andThereafter": "multiples of 100g"},
+      {"commodity": "Un-canned packages of butter and margarine", "standardSizes": ["25g","50g","100g","200g","500g","1kg","2kg","5kg"], "andThereafter": "multiples of 5kg"},
+      {"commodity": "Cereals and Pulses", "standardSizes": ["100g","200g","500g","1kg","2kg","5kg"], "andThereafter": "multiples of 5kg"},
+      {"commodity": "Coffee", "standardSizes": ["25g","50g","100g","200g","250g","500g","1kg"], "andThereafter": "multiples of 1kg"},
+      {"commodity": "Tea", "standardSizes": ["25g","50g","100g","125g","250g","500g","1kg"], "andThereafter": "multiples of 1kg"},
+      {"commodity": "Materials constituted/reconstituted as beverages", "standardSizes": ["25g","50g","100g","200g","500g","1kg"], "andThereafter": "multiples of 1kg"},
+      {"commodity": "Edible Oils, Vanaspati, ghee, butter oil", "standardSizes": ["50g","100g","200g","500g","1kg","2kg","3kg","5kg"], "andThereafter": "multiples of 5kg; volume declarations use the equivalent numeric size in ml/L, with the mass equivalent bracketed in the same letter/numeral size if declared by volume"},
+      {"commodity": "Milk Powder", "standardSizes": ["below 50g: no restriction","50g","100g","200g","500g","1kg"], "andThereafter": "multiples of 500g"},
+      {"commodity": "Non-soapy detergents (powder)", "standardSizes": ["below 50g: no restriction","50g","100g","200g","500g","700g","1kg","1.5kg","2kg"], "andThereafter": "multiples of 1kg"},
+      {"commodity": "Rice (powdered), flour, atta, rawa, suji", "standardSizes": ["100g","200g","500g","1kg","2kg","5kg"], "andThereafter": "multiples of 5kg"},
+      {"commodity": "Salt", "standardSizes": ["below 50g: multiples of 10g","50g","100g","200g","500g","750g","1kg","2kg","5kg"], "andThereafter": "multiples of 5kg"},
+      {"commodity": "Laundry Soap", "standardSizes": ["50g","75g","100g"], "andThereafter": "multiples of 50g"},
+      {"commodity": "Non-soapy detergent cakes/bars", "standardSizes": ["50g","75g","100g","125g","150g","200g","250g","300g"], "andThereafter": "multiples of 100g"},
+      {"commodity": "Toilet soap including all bath soap cakes", "standardSizes": ["25g","50g","75g","100g","125g","150g"], "andThereafter": "multiples of 50g"},
+      {"commodity": "Aerated soft drinks, non-alcoholic beverages", "standardSizes": ["65ml (fruit-based only)","100ml","125ml (fruit-based only)","150ml","200ml","250ml","300ml","330ml (cans only)","500ml","750ml","1L","1.5L","2L","3L","4L","5L"]},
+      {"commodity": "Mineral water and drinking water", "standardSizes": ["100ml","150ml","200ml","250ml","300ml","500ml","750ml","1L","1.5L","2L","3L","4L","5L"]},
+      {"commodity": "Cement in bags", "standardSizes": ["1kg","2kg","5kg","10kg","20kg","25kg","40kg (white cement only)","50kg"]},
+      {"commodity": "Paint (other than paste/solid), varnish, varnish stains, enamels", "standardSizes": ["50ml","100ml","200ml","500ml","1L","2L","3L","4L","5L"], "andThereafter": "multiples of 5L"},
+      {"commodity": "Paste paint and solid paint", "standardSizes": ["500g","1kg","1.5kg","2kg","3kg","5kg","7kg"], "andThereafter": "multiples of 5kg"},
+      {"commodity": "Base paint", "standardSizes": ["450ml","500ml","900ml","925ml","950ml","975ml","1L","3.6L","3.7L","3.8L","3.9L","4L"], "note": "no restriction above 4 litre"}
+    ]
+  },
+  "thirdSchedule": {
+    "title": "Commodities (sold by weight/volume) whose quantity declaration may be qualified by 'when packed'",
+    "source": {"rule": "11(4)", "page": 32},
+    "commodities": ["All kinds of Soaps", "Lotions", "Cream (other than cream of milk)"],
+    "automatable": "PARTIAL",
+    "reason": "A deterministic lookup once the commodity category is known; category classification is the non-deterministic part."
+  },
+  "fourthSchedule": {
+    "title": "Exceptions to the unit-of-declaration rule in Rule 12(2)",
+    "source": {"rule": "12(2)", "page": 33},
+    "commodities": [
+      {"commodity": "Aerosol Products", "declareIn": "Weight"},
+      {"commodity": "Acids in liquid form", "declareIn": "Weight or volume"},
+      {"commodity": "Compressed or liquefied gas (not LPG)", "declareIn": "Weight and equivalent volume at stated temperature and pressure"},
+      {"commodity": "Curd", "declareIn": "Weight"},
+      {"commodity": "Electric Cables", "declareIn": "Length or weight"},
+      {"commodity": "Electric wire", "declareIn": "Length or weight"},
+      {"commodity": "Fencing wire", "declareIn": "Number or weight"},
+      {"commodity": "Fruits, all kinds", "declareIn": "Number or weight"},
+      {"commodity": "Furnace oil", "declareIn": "Weight or volume"},
+      {"commodity": "Non edible vegetable oil", "declareIn": "Weight or volume"},
+      {"commodity": "Edible oil, Vanaspati, ghee and butter oil", "declareIn": "Weight or volume"},
+      {"commodity": "Heavy residual fuel oil", "declareIn": "Weight"},
+      {"commodity": "Industrial diesel fuel", "declareIn": "Volume"},
+      {"commodity": "Honey, malt-extract, golden syrup, treacle", "declareIn": "Weight"},
+      {"commodity": "Ice cream and other similar frozen products", "declareIn": "Volume", "amendmentNote": "Source document notes this was amended wef 01.07.2012 vide GSR 748(E) dated 24.10.2011, replacing 'Volume' with 'Weight'. Registered value is the original 2011 text per this registry's disclaimer."},
+      {"commodity": "Liquid chemicals", "declareIn": "Weight or volume"},
+      {"commodity": "Liquefied petroleum gas", "declareIn": "Weight"},
+      {"commodity": "Nails, wood screws", "declareIn": "Number or weight"},
+      {"commodity": "Paints (other than paste/solid), Varnish, varnish stains, enamels", "declareIn": "Volume"},
+      {"commodity": "Paste paint, solid paint", "declareIn": "Weight"},
+      {"commodity": "Rasgulla, Gulabjamun and other sweet preparations", "declareIn": "Weight"},
+      {"commodity": "Ready-made garments", "declareIn": "Number"},
+      {"commodity": "Sauces, all kinds", "declareIn": "Weight"},
+      {"commodity": "Tyres and tubes", "declareIn": "Number"},
+      {"commodity": "Yarn", "declareIn": "Weight or length of yarn"},
+      {"commodity": "Cosmetics including creams, shampoo, lotions and perfumes", "declareIn": "Weight or measure"}
+    ],
+    "automatable": "PARTIAL",
+    "reason": "A deterministic lookup once the commodity category is known; category classification is the non-deterministic part."
+  },
+  "fifthSchedule": {
+    "title": "Manner of selection of sample packages",
+    "source": {"rule": "19", "page": 34},
+    "sampleSizeTable": [
+      {"lotSize": "less than 4000", "sampleSize": 32},
+      {"lotSize": "more than 4000", "sampleSize": 80}
+    ],
+    "samplingMethod": "Random selection from top, bottom, centre, right, left, front and rear of stored stock; or, for in-line filling, either sampling already-filled packages at random or introducing pre-weighed marked empty containers at random into the packing line.",
+    "automatable": false,
+    "reason": "Defines a physical sampling procedure for an on-premises inspection; not applicable to a single submitted photo."
+  },
+  "sixthSchedule": {
+    "title": "Determination of the net quantity of commodities in packages",
+    "source": {"rule": "19", "page": 36},
+    "parts": [
+      "Part I - Equipment: working standard weights/balances/measures, verified and functioning, to be provided to the inspecting officer.",
+      "Part II - Weight determination procedure: tare-weight determination (using empty tare packages or by opening a sample), thresholds against the maximum permissible error to decide whether more tare samples are needed, gross-minus-tare net weight calculation, and a destructive-testing alternative using marked empty containers introduced into the packing line.",
+      "Liquid content determination by volume: via specific gravity (if constant) or by pouring into a calibrated volume measure.",
+      "Verification of length: via calibrated steel tape or a calibrated longer instrument.",
+      "Verification of commodities packed by number: by actual counting, opening packages as necessary.",
+      "Checking of other declarations: examined at factory or depot level for conformity and adequacy, including the Rule 6(1)(f)/(g) declarations."
+    ],
+    "automatable": false,
+    "reason": "A laboratory/field weighing-and-measuring procedure requiring physical equipment; explicitly PHYSICAL_TEST_REQUIRED, never inferred from a photograph."
+  },
+  "seventhSchedule": {
+    "title": "Data-sheet forms for weight/volume/length checking (Form A, Form B)",
+    "source": {"rule": "19", "page": 40},
+    "fields": ["Manufacturer/Packer name, address, price, month, year", "Commodity classification, Schedule reference, Class A/B, lot size, sample size, maximum permissible error %", "Per-sample gross/tare/net weight or volume/length and remarks", "Declared vs. average result", "General comments on Act/Rules compliance", "Signatures: authorized person, manufacturer/packer or witness, place, designation, name, time"],
+    "automatable": false,
+    "reason": "A paper/record-keeping form for the physical test in Rule 19/Sixth Schedule; not an independent check."
+  }
+}

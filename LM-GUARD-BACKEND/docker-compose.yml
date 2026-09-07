@@ -1,0 +1,45 @@
+# =====================================================================
+# LM-GUARD - OPTIONAL local development stack.
+#
+# You do NOT need Docker to run LM-GUARD. The project is designed to run
+# against Supabase PostgreSQL with:
+#     ./mvnw spring-boot:run
+#
+# Use this file only if you want a throwaway local Postgres instead of
+# Supabase (e.g. offline, on a train, or during a hackathon power cut).
+#
+#   docker compose up -d
+#   DB_URL=jdbc:postgresql://localhost:5432/lmguard \
+#   DB_USERNAME=lmguard DB_PASSWORD=lmguard ./mvnw spring-boot:run
+# =====================================================================
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lmguard-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: lmguard
+      POSTGRES_USER: lmguard
+      POSTGRES_PASSWORD: lmguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - lmguard-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lmguard -d lmguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Optional: a UI for poking at the local database.
+  adminer:
+    image: adminer:latest
+    container_name: lmguard-adminer
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  lmguard-pgdata:

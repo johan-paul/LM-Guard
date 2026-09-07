@@ -1,0 +1,44 @@
+# ---- Secrets (NEVER commit) ----
+.env
+.env.local
+.env.*.local
+*.pem
+*.p12
+*.key
+
+# ---- Maven ----
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ---- Local dev storage (when lmguard.storage.provider=local) ----
+storage-data/
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+nbproject/private/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
+
+# ---- Logs ----
+*.log
+logs/
+
+# ---- ai-service (Python) ----
+ai-service/.venv/
+ai-service/**/__pycache__/
+ai-service/.pytest_cache/
+ai-service/*.egg-info/

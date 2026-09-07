@@ -1,0 +1,401 @@
+### LM-GUARD API tests
+###
+### Every request in this file was executed against a real running instance of this backend
+### during this session (Spring Boot + in-memory H2, mock AI, ruleset LM-PC-2011-v1 seeded) and
+### its actual response is recorded in `api-tests/API-TEST-RESULTS.md`. Nothing here is
+### speculative — where a request is marked "expected 4xx", that is because the live server
+### actually returned that status when it was run, not a guess at what it should do.
+###
+### Requires the VS Code "REST Client" extension (humao.rest-client) to run interactively, or
+### use the equivalent .sh companion for a one-shot CLI run. Requests execute top to bottom —
+### later ones depend on variables captured from earlier responses (`client.global.set`).
+###
+### To point this at your own running instance, just change @baseUrl. Nothing here needs
+### Supabase specifically; it works against any DB the backend is configured against.
+
+@baseUrl = http://localhost:8080
+@contentType = application/json
+
+# =====================================================================================
+# 1. AUTH
+# =====================================================================================
+
+### 1.1 Register an INSPECTOR account
+# Expect: 201, envelope success:true, data.token present
+POST {{baseUrl}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Test Inspector",
+  "email": "inspector_{{$timestamp}}@lmguard.test",
+  "password": "Str0ngPassw0rd!"
+}
+
+> {%
+  client.test("register inspector -> 201", () => response.status === 201);
+  client.global.set("inspectorEmail", request.body.email);
+  client.global.set("inspectorToken", response.body.data.token);
+%}
+
+### 1.2 Register an ADMIN account (role can be supplied explicitly; defaults to INSPECTOR)
+# Expect: 201, data.user.role == "ADMIN"
+POST {{baseUrl}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Test Admin",
+  "email": "admin_{{$timestamp}}@lmguard.test",
+  "password": "Str0ngPassw0rd!",
+  "role": "ADMIN"
+}
+
+> {%
+  client.test("register admin -> 201, role ADMIN", () =>
+    response.status === 201 && response.body.data.user.role === "ADMIN");
+  client.global.set("adminEmail", request.body.email);
+  client.global.set("adminToken", response.body.data.token);
+%}
+
+### 1.3 GET /api/auth/me with a valid token
+# Expect: 200, echoes the registered inspector
+GET {{baseUrl}}/api/auth/me
+Authorization: Bearer {{inspectorToken}}
+
+### 1.4 GET /api/auth/me with NO token
+# Expect: 401 UNAUTHORIZED
+GET {{baseUrl}}/api/auth/me
+
+### 1.5 Login with correct credentials
+# Expect: 200, a fresh token
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "{{inspectorEmail}}",
+  "password": "Str0ngPassw0rd!"
+}
+
+### 1.6 Login with the WRONG password
+# Expect: 401 INVALID_CREDENTIALS
+POST {{baseUrl}}/api/auth/login
+Content-Type: {{contentType}}
+
+{
+  "email": "{{inspectorEmail}}",
+  "password": "WrongPassword!"
+}
+
+### 1.7 Register with the SAME email again
+# Expect: 409 EMAIL_ALREADY_REGISTERED
+POST {{baseUrl}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "name": "Duplicate",
+  "email": "{{inspectorEmail}}",
+  "password": "Str0ngPassw0rd!"
+}
+
+### 1.8 Register with missing/invalid fields
+# Expect: 400 VALIDATION_FAILED, data maps field -> message for name, email, password
+POST {{baseUrl}}/api/auth/register
+Content-Type: {{contentType}}
+
+{
+  "email": "not-an-email"
+}
+
+
+# =====================================================================================
+# 2. PRODUCTS
+# =====================================================================================
+
+### 2.1 Register a product
+# Expect: 201, category upper-cased to PACKAGED_FOOD
+POST {{baseUrl}}/api/products
+Content-Type: {{contentType}}
+Authorization: Bearer {{inspectorToken}}
+
+{
+  "productName": "Classic Salted Chips",
+  "brand": "ABC Foods",
+  "category": "packaged_food",
+  "barcode": "8901234567890"
+}
+
+> {%
+  client.test("create product -> 201", () => response.status === 201);
+  client.global.set("productId", response.body.data.id);
+%}
+
+### 2.2 List / search products
+# Expect: 200, paginated {items,page,size,totalItems,totalPages,last}, finds the product above
+GET {{baseUrl}}/api/products?search=Chips&page=0&size=10
+Authorization: Bearer {{inspectorToken}}
+
+### 2.3 Get one product
+# Expect: 200
+GET {{baseUrl}}/api/products/{{productId}}
+Authorization: Bearer {{inspectorToken}}
+
+### 2.4 Product declaration history (no inspections yet -> empty versions, changeCount 0)
+# Expect: 200, data.versions == [], data.changeCount == 0
+GET {{baseUrl}}/api/products/{{productId}}/history
+Authorization: Bearer {{inspectorToken}}
+
+### 2.5 Get product — malformed UUID
+# Expect: 400 BAD_REQUEST ("Parameter 'id' has an invalid value")
+GET {{baseUrl}}/api/products/not-a-uuid
+Authorization: Bearer {{inspectorToken}}
+
+### 2.6 Get product — well-formed but unknown UUID
+# Expect: 404 PRODUCT_NOT_FOUND
+GET {{baseUrl}}/api/products/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{inspectorToken}}
+
+
+# =====================================================================================
+# 3. INSPECTIONS — the core pipeline
+# =====================================================================================
+
+### 3.1 Open an inspection against the existing product
+# Expect: 201, status PENDING, fields/violations empty
+POST {{baseUrl}}/api/inspections
+Content-Type: {{contentType}}
+Authorization: Bearer {{inspectorToken}}
+
+{
+  "productId": "{{productId}}",
+  "notes": "Routine market check"
+}
+
+> {%
+  client.test("create inspection -> 201 PENDING", () =>
+    response.status === 201 && response.body.data.status === "PENDING");
+  client.global.set("inspectionId", response.body.data.inspectionId);
+%}
+
+### 3.2 Open an inspection with an INLINE product (no productId — registers one on the spot)
+# Expect: 201, a new product is created and referenced
+POST {{baseUrl}}/api/inspections
+Content-Type: {{contentType}}
+Authorization: Bearer {{inspectorToken}}
+
+{
+  "productName": "Inline Registered Biscuits",
+  "brand": "XYZ",
+  "category": "packaged_food"
+}
+
+### 3.3 Open an inspection with NEITHER productId NOR productName
+# Expect: 400 BAD_REQUEST ("Supply either productId, or productName...")
+POST {{baseUrl}}/api/inspections
+Content-Type: {{contentType}}
+Authorization: Bearer {{inspectorToken}}
+
+{
+  "notes": "no product info"
+}
+
+### 3.4 Analyze BEFORE an image has been uploaded
+# Expect: 400 IMAGE_REQUIRED
+POST {{baseUrl}}/api/inspections/{{inspectionId}}/analyze
+Authorization: Bearer {{inspectorToken}}
+
+### 3.5 Upload a NON-image file
+# Expect: 400 INVALID_IMAGE, names the allowed content types
+POST {{baseUrl}}/api/inspections/{{inspectionId}}/image
+Authorization: Bearer {{inspectorToken}}
+Content-Type: multipart/form-data; boundary=BOUNDARY
+
+--BOUNDARY
+Content-Disposition: form-data; name="file"; filename="not-an-image.txt"
+Content-Type: text/plain
+
+this is not an image
+--BOUNDARY--
+
+### 3.6 Upload a REAL package image
+# Expect: 200, imageUrl/imagePath/sizeBytes/contentType populated
+# Uses the fixture at api-tests/fixtures/sample-package.jpg (a synthetic but genuinely
+# OCR-readable label: MRP, net quantity, manufacturer, date, consumer-care e-mail — the same
+# image the CLI companion script uses).
+POST {{baseUrl}}/api/inspections/{{inspectionId}}/image
+Authorization: Bearer {{inspectorToken}}
+Content-Type: multipart/form-data; boundary=BOUNDARY
+
+--BOUNDARY
+Content-Disposition: form-data; name="file"; filename="sample-package.jpg"
+Content-Type: image/jpeg
+
+< ./fixtures/sample-package.jpg
+--BOUNDARY--
+
+### 3.7 Run the analysis pipeline
+# Expect: 200, status is COMPLIANT/NON_COMPLIANT/INCONCLUSIVE (mock AI picks deterministically
+# from the inspection id), fields[] + violations[] populated, rulesetVersion stamped,
+# aiProvider: "MOCK"
+POST {{baseUrl}}/api/inspections/{{inspectionId}}/analyze
+Authorization: Bearer {{inspectorToken}}
+
+> {%
+  client.test("analyze -> 200, has a verdict", () =>
+    response.status === 200 && ["COMPLIANT","NON_COMPLIANT","INCONCLUSIVE"].includes(response.body.data.status));
+  if (response.body.data.violations && response.body.data.violations.length > 0) {
+    client.global.set("violationId", response.body.data.violations[0].id);
+  }
+%}
+
+### 3.8 Get the full inspection result
+# Expect: 200, matches what analyze just returned
+GET {{baseUrl}}/api/inspections/{{inspectionId}}
+Authorization: Bearer {{inspectorToken}}
+
+### 3.9 List inspections, filtered by status
+# Expect: 200, the inspection above appears if its status matches
+GET {{baseUrl}}/api/inspections?status=NON_COMPLIANT&page=0&size=10
+Authorization: Bearer {{inspectorToken}}
+
+### 3.10 List inspections, filtered by productId
+# Expect: 200
+GET {{baseUrl}}/api/inspections?productId={{productId}}
+Authorization: Bearer {{inspectorToken}}
+
+### 3.11 Evidence for the whole inspection
+# Expect: 200, one entry per finding; absent declarations have null x/y/width/height
+GET {{baseUrl}}/api/inspections/{{inspectionId}}/evidence
+Authorization: Bearer {{inspectorToken}}
+
+### 3.12 Evidence for one violation (only meaningful if 3.7 produced a violation)
+# Expect: 200
+GET {{baseUrl}}/api/violations/{{violationId}}/evidence
+Authorization: Bearer {{inspectorToken}}
+
+### 3.13 Structured report
+# Expect: 200, includes rulesetNotice + advisoryNotice ("the enforcement decision is the
+# inspector's") regardless of verdict
+GET {{baseUrl}}/api/inspections/{{inspectionId}}/report
+Authorization: Bearer {{inspectorToken}}
+
+### 3.14 Get inspection — unknown UUID
+# Expect: 404 INSPECTION_NOT_FOUND
+GET {{baseUrl}}/api/inspections/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{inspectorToken}}
+
+### 3.15 Invalid enum value in a query filter
+# Expect: 400 BAD_REQUEST ("Parameter 'status' has an invalid value: NOT_A_STATUS")
+GET {{baseUrl}}/api/inspections?status=NOT_A_STATUS
+Authorization: Bearer {{inspectorToken}}
+
+
+# =====================================================================================
+# 4. DASHBOARD
+# =====================================================================================
+
+### 4.1 Dashboard overview
+# Expect: 200, statistics + recent inspections + high-risk products in one payload
+GET {{baseUrl}}/api/dashboard
+Authorization: Bearer {{inspectorToken}}
+
+### 4.2 Dashboard statistics
+# Expect: 200, nonComplianceRate computed over decided inspections only
+GET {{baseUrl}}/api/dashboard/statistics
+Authorization: Bearer {{inspectorToken}}
+
+### 4.3 High-risk products
+# Expect: 200, paginated; empty is a valid result for a fresh dataset
+GET {{baseUrl}}/api/dashboard/high-risk?page=0&size=20
+Authorization: Bearer {{inspectorToken}}
+
+
+# =====================================================================================
+# 5. RULES (ADMIN only) — role security + versioned rule management
+# =====================================================================================
+
+### 5.1 GET /api/rules as ADMIN
+# Expect: 200, version "LM-PC-2011-v1", status "CUSTOM", 9 rules
+GET {{baseUrl}}/api/rules
+Authorization: Bearer {{adminToken}}
+
+### 5.2 GET /api/rules as INSPECTOR (wrong role)
+# Expect: 403 FORBIDDEN — do not weaken security to make this pass
+GET {{baseUrl}}/api/rules
+Authorization: Bearer {{inspectorToken}}
+
+### 5.3 GET /api/rules with NO token
+# Expect: 401 UNAUTHORIZED
+GET {{baseUrl}}/api/rules
+
+### 5.4 Create a rule using "field"/"type" (the RuleDefinition-internal names, not the request
+### DTO's) — an easy mistake since RuleDefinition.java itself uses `field`/`type`. Kept here
+### specifically because it tripped up this session's own first attempt.
+# Expect: 400 VALIDATION_FAILED naming ruleType/fieldName/ruleDefinition as required (ruleCode,
+# ruleName and version, being present and correctly named, are NOT flagged)
+POST {{baseUrl}}/api/rules
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "ruleCode": "TEST-BAD-SHAPE",
+  "ruleName": "Wrong field names",
+  "field": "BATCH_NUMBER",
+  "type": "REQUIRED_FIELD",
+  "severity": "MINOR",
+  "version": "LM-PC-2011-v1"
+}
+
+### 5.5 Create a rule with the CORRECT shape
+# Expect: 200, echoes the saved rule
+POST {{baseUrl}}/api/rules
+Content-Type: {{contentType}}
+Authorization: Bearer {{adminToken}}
+
+{
+  "ruleCode": "TEST-SWAGGER-CHECK-001",
+  "ruleName": "Swagger endpoint smoke-test rule",
+  "description": "Created during an automated endpoint verification pass",
+  "fieldName": "BATCH_NUMBER",
+  "ruleType": "REQUIRED_FIELD",
+  "ruleDefinition": "{\"required\":true,\"minConfidence\":0.70,\"finding\":\"Batch number not detected\"}",
+  "severity": "MINOR",
+  "version": "LM-PC-2011-v1",
+  "active": true
+}
+
+> {%
+  client.test("upsert rule -> 200", () => response.status === 200);
+  client.global.set("ruleId", response.body.data.id);
+%}
+
+### 5.6 Deactivate the rule just created
+# Expect: 200, data.active == false
+PATCH {{baseUrl}}/api/rules/{{ruleId}}/active?active=false
+Authorization: Bearer {{adminToken}}
+
+### 5.7 Activate/deactivate an unknown rule id
+# Expect: 404 RULE_NOT_FOUND
+PATCH {{baseUrl}}/api/rules/00000000-0000-0000-0000-000000000000/active?active=false
+Authorization: Bearer {{adminToken}}
+
+
+# =====================================================================================
+# 6. CROSS-CUTTING ERROR HANDLING
+# =====================================================================================
+
+### 6.1 Malformed JSON body
+# Expect: 400 BAD_REQUEST ("Request body is missing or malformed JSON")
+POST {{baseUrl}}/api/products
+Content-Type: {{contentType}}
+Authorization: Bearer {{inspectorToken}}
+
+{not valid json
+
+### 6.2 Wrong HTTP method on a real path
+# Expect: 405, errorCode BAD_REQUEST, message "Request method 'DELETE' is not supported"
+DELETE {{baseUrl}}/api/products
+Authorization: Bearer {{inspectorToken}}
+
+### 6.3 Unknown path entirely
+# Expect: 404, errorCode RESOURCE_NOT_FOUND, message "No endpoint matches this request"
+GET {{baseUrl}}/api/this-does-not-exist
+Authorization: Bearer {{inspectorToken}}
