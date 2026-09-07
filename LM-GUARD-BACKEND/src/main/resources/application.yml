@@ -117,7 +117,7 @@ lmguard:
     # When true a failure of the real AI service degrades to the mock
     # instead of failing the inspection (keeps live demos alive).
     fallback-to-mock: ${AI_FALLBACK_TO_MOCK:true}
-    service-url: ${AI_SERVICE_URL:http://localhost:8000}
+    service-url: ${AI_SERVICE_URL:https://lm-guard-ai-service.onrender.com}
     analyze-path: ${AI_SERVICE_ANALYZE_PATH:/analyze}
     api-key: ${AI_SERVICE_API_KEY:}
     timeout-ms: ${AI_SERVICE_TIMEOUT_MS:30000}

@@ -822,9 +822,9 @@ export const inspectionService = {
   // Rules' category list and Violations' type list.
   async getReferenceData() {
     const [productsPage, inspectors, zones] = await Promise.all([
-      api.get('/products', { params: { size: 100 } }),
-      api.get('/inspectors', { params: { status: 'ACTIVE' } }),
-      api.get('/zones'),
+      api.get('/products', { params: { size: 100 } }).catch(() => ({ data: { data: { items: [] } } })),
+      api.get('/inspectors', { params: { status: 'ACTIVE' } }).catch(() => ({ data: { data: [] } })),
+      api.get('/zones').catch(() => ({ data: { data: [] } })),
     ]);
     const products = productsPage.data.data.items || [];
     const categories = Array.from(new Set(products.map((p) => p.category).filter(Boolean))).sort();

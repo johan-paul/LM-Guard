@@ -42,7 +42,12 @@ public class MockAIAnalysisService implements AIAnalysisService {
         facts.add(ExtractedFact.detected(ProductField.MANUFACTURER, "ABC Foods", 0.93,
                 BoundingBox.of(60, 355, 320, 48)));
         facts.add(ExtractedFact.detected(ProductField.ORIGIN, "India", 0.92, BoundingBox.of(60, 410, 140, 44)));
-        facts.add(ExtractedFact.detected(ProductField.COMMODITY_NAME, "Classic Salted Chips", 0.96,
+        String commodityName = switch (variant) {
+            case 0 -> "Packaged Snack (" + (Math.abs(inspectionId.hashCode()) % 1000) + ")";
+            case 1 -> "Bath Soap Bar (" + (Math.abs(inspectionId.hashCode()) % 1000) + ")";
+            default -> "Retail Packaged Commodity (" + (Math.abs(inspectionId.hashCode()) % 1000) + ")";
+        };
+        facts.add(ExtractedFact.detected(ProductField.COMMODITY_NAME, commodityName, 0.96,
                 BoundingBox.of(58, 120, 380, 62)));
 
         switch (variant) {

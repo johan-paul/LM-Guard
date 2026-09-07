@@ -39,7 +39,7 @@ services:
       # Set after the first deploy to the ai-service's Render URL,
       # e.g. https://lm-guard-ai-service.onrender.com
       - key: AI_SERVICE_URL
-        sync: false
+        value: "https://lm-guard-ai-service.onrender.com"
       - key: AI_MOCK_MODE
         value: "false"
       - key: AI_FALLBACK_TO_MOCK
