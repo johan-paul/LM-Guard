@@ -8,6 +8,9 @@ WORKDIR /app
 # Cache dependencies separately from source so `mvn` doesn't re-download on every code change.
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
+# Committed from Windows, mvnw loses its executable bit in git - set it explicitly
+# rather than depend on the tracked file mode.
+RUN chmod +x mvnw
 RUN ./mvnw -B dependency:go-offline
 
 COPY src/ src/
