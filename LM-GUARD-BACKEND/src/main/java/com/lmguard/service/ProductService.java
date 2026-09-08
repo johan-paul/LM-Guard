@@ -454,6 +454,9 @@ public class ProductService {
 
     private String normaliseCategory(String category) {
         String trimmed = trimToNull(category);
-        return trimmed == null ? null : trimmed.toUpperCase(java.util.Locale.ROOT);
+        if (trimmed == null || "ALL".equalsIgnoreCase(trimmed)) {
+            return null;
+        }
+        return trimmed.toUpperCase(java.util.Locale.ROOT);
     }
 }

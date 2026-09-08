@@ -140,7 +140,9 @@ public class InspectionAnalysisService {
         // inspection. A commodity name the AI couldn't read still gets a product row (never
         // block the pipeline on it) - it's just named accordingly and can be corrected later.
         if (inspection.getProduct() == null) {
-            inspection.setProduct(resolveProductFromAnalysis(analysis));
+            inspection.setProduct(resolveProductFromAnalysis(inspection, analysis));
+        } else if (inspection.getProduct().getBrand() == null && inspection.getEstablishment() != null) {
+            inspection.getProduct().setBrand(inspection.getEstablishment());
         }
 
         // --- 2. persist the observations before judging them ---
@@ -191,7 +193,7 @@ public class InspectionAnalysisService {
      * this never blocks on that, since a human can always correct the product afterward via
      * PATCH .../product - it just means an inspector reviewing the case sees "Unidentified
      * product" instead of a guessed name. */
-    private Product resolveProductFromAnalysis(AIAnalysisResult analysis) {
+    private Product resolveProductFromAnalysis(Inspection inspection, AIAnalysisResult analysis) {
         String name = analysis.fact(ProductField.COMMODITY_NAME)
                 .filter(ExtractedFact::isPresent)
                 .map(ExtractedFact::value)
@@ -199,7 +201,7 @@ public class InspectionAnalysisService {
         String brand = analysis.fact(ProductField.MANUFACTURER)
                 .filter(ExtractedFact::isPresent)
                 .map(ExtractedFact::value)
-                .orElse(null);
+                .orElse(inspection != null ? inspection.getEstablishment() : null);
         UUID createdId = productService.create(new ProductCreateRequest(name, brand, null, null)).id();
         return productService.requireById(createdId);
     }

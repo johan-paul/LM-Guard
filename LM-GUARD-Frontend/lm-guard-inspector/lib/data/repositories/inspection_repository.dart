@@ -35,6 +35,8 @@ abstract class InspectionRepository {
     required InspectionType type,
     required Priority priority,
     required DateTime scheduledFor,
+    String? productName,
+    String? brand,
   });
 
   /// The product-identification step: attaches an existing or newly
@@ -126,6 +128,8 @@ class MockInspectionRepository implements InspectionRepository {
     required InspectionType type,
     required Priority priority,
     required DateTime scheduledFor,
+    String? productName,
+    String? brand,
   }) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     _sequence++;
@@ -441,10 +445,14 @@ class ApiInspectionRepository implements InspectionRepository {
     required InspectionType type,
     required Priority priority,
     required DateTime scheduledFor,
+    String? productName,
+    String? brand,
   }) async {
     final Map<String, dynamic> json = await _client.post(ApiRoutes.inspections, <String, dynamic>{
       'establishment': establishment,
       if (location.isNotEmpty) 'address': location,
+      if (productName != null && productName.trim().isNotEmpty) 'productName': productName.trim(),
+      if (brand != null && brand.trim().isNotEmpty) 'brand': brand.trim(),
       'inspectionType': type.wireValue,
       'priority': priority.wireValue,
       // .toUtc() first: a bare local-time ISO string (no offset/Z) fails Jackson's
