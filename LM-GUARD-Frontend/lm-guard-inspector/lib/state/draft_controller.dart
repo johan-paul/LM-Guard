@@ -10,7 +10,10 @@ import '../data/models/inspection.dart';
 import '../data/models/product.dart';
 import '../data/models/product_history.dart';
 import '../data/repositories/inspection_repository.dart';
+import '../data/services/ar_measurement_service.dart';
 import '../data/services/evidence_service.dart';
+import '../data/services/image_quality_service.dart';
+import '../features/new_inspection/steps/widgets/retake_photo_dialog.dart';
 
 /// The five recorded stages of a field inspection. There is no manual
 /// product identification stage - the backend identifies the product from
@@ -40,14 +43,20 @@ class DraftController extends ChangeNotifier {
     required Inspection inspection,
     required InspectionRepository repository,
     required EvidenceService evidenceService,
+    ImageQualityService imageQualityService = const ImageQualityService(),
+    ArMeasurementService arMeasurementService = const ArMeasurementService(),
     InspectionStep initialStep = InspectionStep.information,
   })  : _inspection = inspection,
         _repository = repository,
         _evidenceService = evidenceService,
+        _imageQualityService = imageQualityService,
+        _arMeasurementService = arMeasurementService,
         _step = initialStep;
 
   final InspectionRepository _repository;
   final EvidenceService _evidenceService;
+  final ImageQualityService _imageQualityService;
+  final ArMeasurementService _arMeasurementService;
 
   Inspection _inspection;
   InspectionStep _step;
@@ -71,6 +80,11 @@ class DraftController extends ChangeNotifier {
   /// to surface: [AiEvaluationPanel] only renders once [packagePhotoCaptured]
   /// is true, so the officer saw "Take photo" do nothing at all.
   String? _captureError;
+  /// Set when a Rule 7 numeral-height AR measurement attempt fails or the
+  /// device doesn't support it - distinct from [_captureError] (which is
+  /// about the package photo specifically) so the two don't overwrite one
+  /// another if an officer tries both actions in the same session.
+  String? _measurementError;
 
   Inspection get inspection => _inspection;
   InspectionStep get step => _step;
@@ -84,6 +98,7 @@ class DraftController extends ChangeNotifier {
   String? get packagePhotoPath => _packagePhotoPath;
   bool get packagePhotoCaptured => _packagePhotoPath != null;
   String? get captureError => _captureError;
+  String? get measurementError => _measurementError;
 
   int get stepNumber => _step.number;
   int get stepCount => InspectionStep.values.length;
@@ -185,22 +200,36 @@ class DraftController extends ChangeNotifier {
   /// immediately runs the analysis - the inspector's only action is taking
   /// the photo; extraction and rule evaluation follow automatically. A
   /// retake replaces the previous photo and re-runs analysis the same way.
+  ///
+  /// A fast client-side quality check ([ImageQualityService]) runs on the
+  /// captured photo before any of that: a photo it flags as unreadable
+  /// (blurred, too dark, too low-resolution) is never uploaded at all - the
+  /// officer sees a retake prompt immediately instead of waiting on a full
+  /// server round trip only to get an "inconclusive" result back. This is a
+  /// fast local heuristic, not the authoritative check - a photo that passes
+  /// it can still come back flagged by the server-side pipeline (see
+  /// AiEvaluationPanel's warnings), which remains the backstop.
   Future<void> capturePackagePhoto(BuildContext context, {bool fromGallery = false}) async {
     _busy = true;
     _captureError = null;
     notifyListeners();
     EvidenceItem? captured;
+    ImageQualityResult? quality;
     try {
       captured = fromGallery
           ? await _evidenceService.pickFromGallery(label: 'Package photo')
           : await _evidenceService.capture(context: context, label: 'Package photo');
-      if (captured?.filePath != null) {
-        _packagePhotoPath = captured!.filePath;
-        _uploadedPackageImageUrl = null;
-        _aiStatus = AiEvaluationStatus.idle;
-        _aiEvaluation = null;
-        _aiError = null;
-        _dirty = true;
+      final String? path = captured?.filePath;
+      if (path != null) {
+        quality = await _imageQualityService.assess(path);
+        if (quality.usable) {
+          _packagePhotoPath = path;
+          _uploadedPackageImageUrl = null;
+          _aiStatus = AiEvaluationStatus.idle;
+          _aiEvaluation = null;
+          _aiError = null;
+          _dirty = true;
+        }
       }
     } catch (exception) {
       // A cancelled picker returns null and is handled above, not an
@@ -210,6 +239,14 @@ class DraftController extends ChangeNotifier {
     } finally {
       _busy = false;
       notifyListeners();
+    }
+
+    final ImageQualityResult? qualityResult = quality;
+    if (qualityResult != null && !qualityResult.usable) {
+      if (context.mounted) {
+        await showRetakePhotoDialog(context, qualityResult);
+      }
+      return;
     }
     if (captured?.filePath != null) {
       await runAiEvaluation();
@@ -233,6 +270,62 @@ class DraftController extends ChangeNotifier {
         ? 'Could not open the photo library. Try again, or use the camera instead.'
         : 'Could not open the camera. Check that camera permission is granted '
             'for this browser/app, or use Upload instead.';
+  }
+
+  /// Rule 7 (minimum numeral height): launches the native AR measurement screen
+  /// (Android/ARCore only - see [ArMeasurementService]), then submits a
+  /// successful reading to the backend and refreshes the evaluation so the
+  /// updated compliance status is visible. A cancelled attempt is a silent
+  /// no-op; an unsupported device or submission failure surfaces via
+  /// [measurementError], mirroring how [_captureError] surfaces a photo
+  /// capture failure.
+  Future<void> measureNumeralHeight(BuildContext context) async {
+    _busy = true;
+    _measurementError = null;
+    notifyListeners();
+
+    ArMeasurementResult result;
+    try {
+      result = await _arMeasurementService.measureNumeralHeightMm();
+    } finally {
+      _busy = false;
+    }
+
+    switch (result.outcome) {
+      case ArMeasurementOutcome.cancelled:
+        notifyListeners();
+        return;
+      case ArMeasurementOutcome.unsupported:
+        _measurementError = 'Numeral-height measurement needs ARCore, which this device or '
+            'app build does not support. Measure it by hand (e.g. with a ruler against the '
+            'printed text) and record the result in this rule\'s notes instead.';
+        notifyListeners();
+        return;
+      case ArMeasurementOutcome.success:
+        break;
+    }
+
+    _busy = true;
+    notifyListeners();
+    try {
+      await _repository.submitMeasurement(
+        _inspection.id,
+        'NUMERAL_HEIGHT_MM',
+        result.distanceMm!.toStringAsFixed(2),
+        confidence: result.trackingQuality == 'DEPTH' ? 0.9 : 0.7,
+      );
+      // submitMeasurement re-evaluates server-side but doesn't itself return a
+      // parsed result - re-running the already-working AI evaluation pull
+      // (it re-reads what's persisted, not just fresh AI facts) is how the
+      // checklist/violations view picks up the new Rule 7 status.
+      await runAiEvaluation();
+    } catch (exception) {
+      _measurementError = 'Could not save the measurement (${result.distanceMm!.toStringAsFixed(1)}mm) - '
+          'check the connection and try again.';
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
   }
 
   /* ---------------- Step 3: checklist ---------------- */

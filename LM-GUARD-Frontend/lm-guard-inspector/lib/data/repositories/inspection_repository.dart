@@ -62,6 +62,15 @@ abstract class InspectionRepository {
   /// refuses to run [runAiEvaluation] until this has been called at least
   /// once. Returns the stored image's public URL.
   Future<String> uploadPackageImage(String inspectionId, String filePath);
+
+  /// Records a physical measurement the AI vision pipeline cannot produce -
+  /// currently only numeral height (`fieldName: 'NUMERAL_HEIGHT_MM'`, `value`
+  /// in millimetres) from the AR measurement feature. Re-evaluates rule
+  /// compliance server-side against everything currently persisted, but does
+  /// not itself return the updated result - call [runAiEvaluation] again (it
+  /// re-reads what's persisted, not just this run's fresh AI facts) to
+  /// refresh the checklist/violations view.
+  Future<void> submitMeasurement(String inspectionId, String fieldName, String value, {double? confidence});
 }
 
 /// In-memory implementation backed by [MockData].
@@ -205,6 +214,11 @@ class MockInspectionRepository implements InspectionRepository {
   Future<String> uploadPackageImage(String inspectionId, String filePath) async {
     await Future<void>.delayed(const Duration(milliseconds: 300));
     return filePath;
+  }
+
+  @override
+  Future<void> submitMeasurement(String inspectionId, String fieldName, String value, {double? confidence}) async {
+    await Future<void>.delayed(const Duration(milliseconds: 300));
   }
 
   void _upsert(Inspection inspection) {
@@ -729,6 +743,20 @@ class ApiInspectionRepository implements InspectionRepository {
       filePath,
     ) as Map<String, dynamic>;
     return json['imageUrl'] as String? ?? filePath;
+  }
+
+  @override
+  Future<void> submitMeasurement(String inspectionId, String fieldName, String value, {double? confidence}) async {
+    // The backend re-evaluates and returns the full updated InspectionResponse, but this
+    // repository method deliberately doesn't parse it - runAiEvaluation()'s JSON-to-AIEvaluation
+    // mapping is the one place that logic lives, and it re-reads what's persisted (not just one
+    // run's fresh AI facts), so calling it again after this completes gets the same up-to-date
+    // view without duplicating ~150 lines of parsing here.
+    await _client.post(ApiRoutes.measurements(inspectionId), <String, dynamic>{
+      'fieldName': fieldName,
+      'value': value,
+      if (confidence != null) 'confidence': confidence,
+    });
   }
 
   // ------------------------------------------------------------------

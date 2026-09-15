@@ -65,6 +65,29 @@ class ScanStep extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 16),
+        const InfoBanner(
+          message:
+              'Rule 7 - minimum numeral height: measure the smallest printed numeral in the '
+              'declarations using AR (Android only). This is a separate physical measurement, '
+              'not read from the photo above.',
+          icon: Icons.straighten_outlined,
+          tone: BannerTone.neutral,
+        ),
+        if (draft.measurementError != null) ...<Widget>[
+          const SizedBox(height: 12),
+          InfoBanner(
+            tone: BannerTone.danger,
+            icon: Icons.error_outline,
+            message: draft.measurementError!,
+          ),
+        ],
+        const SizedBox(height: 10),
+        SecondaryButton(
+          label: 'Measure numeral height (Rule 7)',
+          icon: Icons.straighten_outlined,
+          onPressed: draft.busy ? null : () => draft.measureNumeralHeight(context),
+        ),
         if (draft.packagePhotoCaptured) ...<Widget>[
           const SizedBox(height: 18),
           AiEvaluationPanel(draft: draft),

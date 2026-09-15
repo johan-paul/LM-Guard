@@ -37,22 +37,15 @@ jobs:
         working-directory: LM-GUARD-Frontend/lm-guard-inspector
         run: flutter pub get
 
-      # android/ is deliberately gitignored (see its .gitignore) and recreated on demand.
-      - name: Generate the Android project
-        working-directory: LM-GUARD-Frontend/lm-guard-inspector
-        run: flutter create --platforms android .
+      # android/ is committed (not regenerated) as of the Rule 7 AR-measurement feature - it
+      # carries real custom native code (ArMeasurementActivity.kt and friends) that
+      # `flutter create --platforms android .` would silently wipe. The INTERNET-permission sed
+      # patch this step used to need is gone too: the committed AndroidManifest.xml already has
+      # it, checked out with everything else by actions/checkout above.
 
-      # flutter create's template doesn't request network access, which every screen in
-      # this app needs (it's a REST client for the Spring Boot backend) - inject it.
-      - name: Add the INTERNET permission
-        working-directory: LM-GUARD-Frontend/lm-guard-inspector
-        run: |
-          sed -i 's#<manifest xmlns:android="http://schemas.android.com/apk/res/android">#<manifest xmlns:android="http://schemas.android.com/apk/res/android">\n    <uses-permission android:name="android.permission.INTERNET"/>#' \
-            android/app/src/main/AndroidManifest.xml
-
-      # flutter create also stamps the default Flutter launcher icon back onto the fresh
-      # android/ folder every run - regenerate the real app icon (see pubspec.yaml's
-      # flutter_launcher_icons config and assets/icon/) after that, not before.
+      # The committed app icon (pubspec.yaml's flutter_launcher_icons config + assets/icon/)
+      # only needs regenerating when the source image changes, but doing it on every build is
+      # cheap and keeps CI from silently drifting out of sync with a stale committed icon.
       - name: Generate the app launcher icon
         working-directory: LM-GUARD-Frontend/lm-guard-inspector
         run: dart run flutter_launcher_icons

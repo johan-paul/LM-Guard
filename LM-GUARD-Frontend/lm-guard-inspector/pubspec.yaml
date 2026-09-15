@@ -32,6 +32,11 @@ dependencies:
   # unchanged, since its camera source already opens the real OS camera app there.
   camera: ^0.12.1
 
+  # Client-side image-quality pre-check (blur/brightness/resolution) run immediately after
+  # capture, before upload - see ImageQualityService. Pure-Dart pixel access, no native
+  # binary, so it works identically on every platform this app already targets.
+  image: ^4.2.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

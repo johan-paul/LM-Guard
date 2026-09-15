@@ -8,8 +8,22 @@ build/
 .flutter-plugins-dependencies
 pubspec.lock
 
-# Generated platform folders (recreate with `flutter create --platforms=android .`)
-android/
+# android/ is committed (not regenerated) as of the Rule 7 AR-measurement feature: it now
+# contains real custom native code (ArMeasurementActivity.kt, BackgroundRenderer.kt,
+# DisplayRotationHelper.kt, and a hand-written MainActivity.kt/AndroidManifest.xml/
+# build.gradle.kts), which `flutter create --platforms=android .` would silently destroy. Only
+# genuine build output/local-machine state is ignored below - see also
+# .github/workflows/build-inspector-apk.yml, which now checks this folder out directly instead
+# of regenerating it.
+android/.gradle/
+android/app/build/
+android/build/
+android/local.properties
+android/captures/
+android/**/GeneratedPluginRegistrant.java
+android/**/GeneratedPluginRegistrant.kt
+
+# Other platform folders remain generated on demand - none of them carry custom code (yet).
 ios/
 web/
 linux/

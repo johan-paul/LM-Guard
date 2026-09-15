@@ -190,6 +190,7 @@ class ApiRoutes {
   static String inspection(String id) => '/inspections/$id';
   static String uploadImage(String id) => '/inspections/$id/image';
   static String analyze(String id) => '/inspections/$id/analyze';
+  static String measurements(String id) => '/inspections/$id/measurements';
   static String submitInspection(String id) => '/inspections/$id/submit';
   static String identifyProduct(String id) => '/inspections/$id/product';
   static String notes(String id) => '/inspections/$id/notes';
