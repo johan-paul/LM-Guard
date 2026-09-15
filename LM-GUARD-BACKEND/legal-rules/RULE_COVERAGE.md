@@ -28,7 +28,7 @@ image-derivable (physical test / external data / procedural / penalty / definiti
 | 6(5) | Multi-component commodities | Category-dependent | Yes | No | No | Yes | 🟡 |
 | 6(6) | Exhaustion of old packaging (2011-2012 transitional) | Time-bound, expired | No | No | No | No | ⚪ Historical/expired |
 | 7(1) | PDP for ≤5cm³ packages | Tiny packages | Yes | No | Yes | Yes | 🟡 Capacity needs physical measurement |
-| 7(2)-(3) | Minimum numeral/letter height | Ch. II | Yes | No | Yes | Yes | 🟡 **Not assessable from image without a calibration reference** |
+| 7(2)-(3) | Minimum numeral/letter height | Ch. II | Yes | No | Yes | Yes | 🟡 Table-I/II thresholds now transcribed (`lm_pc_2011_rules.json`, `LM-PC-7-2-3`); still needs an AR-based mm measurement to produce a `NUMERAL_HEIGHT_MM` fact before the rule engine can evaluate it — **not assessable from an ordinary photo without a calibration reference** |
 | 7(4) | Exempt if another law already requires it | Ch. II | No | Yes | No | Yes | ⚪ |
 | 8(1) | PDP placement + clear space around quantity | Ch. II | Yes | No | No | Yes | 🟡 Advisory signal only |
 | 8(2) | Returnable-bottle RSP placement | Beverage bottles | Yes | No | No | No | 🟢 Could be added (niche) |

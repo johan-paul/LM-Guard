@@ -117,7 +117,10 @@ class LmPc2011RuleSetTest {
                 "MRP", present("Rs. 99.00", 0.97),
                 "NET_QUANTITY", present("500 g", 0.95),
                 "MANUFACTURE_DATE", present("03/2026", 0.92),
-                "CONSUMER_CARE", present("care@abcfoods.example / 1800-123-456", 0.90)));
+                "CONSUMER_CARE", present("care@abcfoods.example / 1800-123-456", 0.90),
+                // 500 g falls in Table-I's "above 200, up to 500 g/ml" band (2mm minimum) -
+                // 4.5mm clears it comfortably.
+                "NUMERAL_HEIGHT_MM", present("4.5", 0.93)));
 
         ComplianceResult result = engine.evaluate(facts, "LM-PC-2011-v1");
 

@@ -9,6 +9,8 @@
     "type=MIN_LENGTH       -> if present, the value must be at least `minLength` characters.",
     "minConfidence         -> below this the finding is INCONCLUSIVE, never NON_COMPLIANT (matches lmguard.rules.default-min-confidence).",
     "This ruleset intentionally omits an ORIGIN/country-of-origin rule -- see legal-rules/RULE_REVIEW.md #2 for why the demo ruleset's DEMO-ORG-001 does not reflect this source document.",
+    "type=NUMERIC_BAND     -> if present, the leading number must be >= the threshold selected from `bands` by the numeric value of `bandField` (another fact). `bands` rows are ascending by `upToInclusive`; the last row's `upToInclusive` is null, meaning unbounded.",
+    "LM-PC-7-2-3-NUMERAL-HEIGHT covers Rule 7 Table-I (net quantity declared by WEIGHT/VOLUME) only, using the table's 'normal case' column -- not the higher blown/formed/molded/embossed/perforated thresholds (that manufacturing distinction is not currently assessable), and not Table-II (quantity declared by length/area/number), which needs a second measurement (principal display panel area) not yet implemented. NUMERAL_HEIGHT_MM is never reported by the AI/OCR pipeline -- see ProductField.NUMERAL_HEIGHT_MM's own javadoc for why, and InspectionAnalysisService#submitMeasurement for how it is captured (an inspector-driven AR depth measurement, not part of /analyze).",
     "The engine is fully deterministic. No LLM participates in the compliance decision."
   ],
   "rules": [
@@ -122,6 +124,24 @@
       "severity": "MAJOR",
       "finding": "Rule 6(2): a consumer-complaint contact (name/address/phone/e-mail) was not detected on the package.",
       "remediation": "Declare a consumer-complaint contact (name, address, phone and/or e-mail) on the package per Rule 6(2)."
+    },
+    {
+      "ruleCode": "LM-PC-7-2-3-NUMERAL-HEIGHT",
+      "ruleName": "Minimum numeral height for the declared net quantity (Table-I)",
+      "description": "Rule 7(2)-(3) and Table-I: the height of any numeral in the required declarations on the principal display panel must be at least 1mm (net quantity up to 200 g/ml), 2mm (above 200 up to 500 g/ml), or 4mm (above 500 g/ml) -- 'normal case' column only. Applies only where net quantity is declared by weight or volume; a quantity declared by length/area/number uses Table-II, not covered here.",
+      "field": "NUMERAL_HEIGHT_MM",
+      "type": "NUMERIC_BAND",
+      "required": true,
+      "minConfidence": 0.70,
+      "bandField": "NET_QUANTITY",
+      "bands": [
+        {"upToInclusive": 200, "minHeightMm": 1},
+        {"upToInclusive": 500, "minHeightMm": 2},
+        {"upToInclusive": null, "minHeightMm": 4}
+      ],
+      "severity": "MAJOR",
+      "finding": "Rule 7(2)-(3): the printed numeral height does not meet the Table-I minimum for the declared net quantity.",
+      "remediation": "Increase the numeral height on the principal display panel to at least the Table-I minimum for the declared net quantity (1mm up to 200 g/ml, 2mm up to 500 g/ml, 4mm above), per Rule 7(2)-(3) of the Legal Metrology (Packaged Commodities) Rules, 2011."
     }
   ]
 }

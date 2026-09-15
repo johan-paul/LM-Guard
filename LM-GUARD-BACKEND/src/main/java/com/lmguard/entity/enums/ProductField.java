@@ -28,9 +28,23 @@ public final class ProductField {
      * Reported purely as an advisory hint the inspector can read before answering by hand. */
     public static final String PACKAGE_CONDITION = "PACKAGE_CONDITION";
 
+    /** Minimum printed numeral height on the principal display panel, in millimetres (Rule
+     * 7(2)-(3)) - unlike every field above, this is never reported by the AI/OCR pipeline. No
+     * physical scale can be recovered from an ordinary photo without a calibration reference, so
+     * this is captured separately by the inspector via an AR depth-measurement action
+     * (see InspectionAnalysisService#submitMeasurement) and stored the same way, but through a
+     * different path. */
+    public static final String NUMERAL_HEIGHT_MM = "NUMERAL_HEIGHT_MM";
+
     /** Fields mirrored onto {@code product_versions} for change tracking. */
     public static final Set<String> VERSIONED_FIELDS =
             Set.of(MRP, NET_QUANTITY, MANUFACTURER, ORIGIN, CONSUMER_CARE);
+
+    /** Fields an inspector submits directly (not derived from the AI vision pipeline), so
+     * {@code persistExtractedFields}'s wipe-and-replace-from-fresh-analysis must never delete
+     * them - a photo re-analysis has nothing to say about a physical measurement the inspector
+     * took separately, and must not silently erase it. */
+    public static final Set<String> INSPECTOR_MEASURED_FIELDS = Set.of(NUMERAL_HEIGHT_MM);
 
     private ProductField() {
     }

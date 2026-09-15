@@ -110,7 +110,7 @@ public class DeterministicRuleEngineService implements RuleEngineService {
                     fact.confidence(), fact.trimmed(), fact.box());
         }
 
-        return applyCheck(rule, fact);
+        return applyCheck(rule, fact, facts);
     }
 
     /** The declaration is reported as absent. Whether that is a breach depends on confidence. */
@@ -134,8 +134,10 @@ public class DeterministicRuleEngineService implements RuleEngineService {
                 fact.confidence(), null, fact.box());
     }
 
-    /** The type-specific check, run only on a value read confidently enough to judge. */
-    private RuleFinding applyCheck(RuleDefinition rule, FactValue fact) {
+    /** The type-specific check, run only on a value read confidently enough to judge. `facts`
+     * is the full observation set, not just this rule's own field - NUMERIC_BAND needs to look
+     * up a SECOND field (e.g. NET_QUANTITY) to know which threshold row applies. */
+    private RuleFinding applyCheck(RuleDefinition rule, FactValue fact, InspectionFacts facts) {
         String value = fact.trimmed();
 
         return switch (rule.type()) {
@@ -181,7 +183,98 @@ public class DeterministicRuleEngineService implements RuleEngineService {
                                 fact.confidence(), value, fact.box())
                         : pass(rule, value, fact.confidence(), fact.box());
             }
+
+            case NUMERIC_BAND -> {
+                Optional<Double> ownValue = leadingNumber(value);
+                if (ownValue.isEmpty()) {
+                    yield finding(rule, ComplianceStatus.NON_COMPLIANT,
+                            "Declaration '" + rule.field() + "' does not contain a readable number.",
+                            fact.confidence(), value, fact.box());
+                }
+
+                Optional<FactValue> bandFact = facts.get(rule.bandField());
+                if (bandFact.isEmpty() || !bandFact.get().isPresent()) {
+                    yield finding(rule, ComplianceStatus.INCONCLUSIVE,
+                            "Cannot determine the minimum height required for '" + rule.field()
+                                    + "' because '" + rule.bandField() + "' was not read. Manual "
+                                    + "verification required.",
+                            fact.confidence(), value, fact.box());
+                }
+
+                Optional<Double> quantityInGramsOrMl = parseGramsOrMillilitres(bandFact.get().trimmed());
+                if (quantityInGramsOrMl.isEmpty()) {
+                    yield finding(rule, ComplianceStatus.INCONCLUSIVE,
+                            "'" + rule.bandField() + "' ('" + bandFact.get().trimmed() + "') is not declared "
+                                    + "in weight or volume, so the Table-I minimum-height band cannot be "
+                                    + "applied (a quantity declared by length/area/number uses Table-II, "
+                                    + "which this system does not yet evaluate). Manual verification required.",
+                            fact.confidence(), value, fact.box());
+                }
+
+                Optional<RuleDefinition.QuantityBand> band = selectBand(rule.bands(), quantityInGramsOrMl.get());
+                if (band.isEmpty()) {
+                    yield finding(rule, ComplianceStatus.INCONCLUSIVE,
+                            "Rule " + rule.ruleCode() + " has no threshold band configured for this "
+                                    + "declared quantity. Manual verification required.",
+                            fact.confidence(), value, fact.box());
+                }
+
+                double requiredMm = band.get().minHeightMm();
+                yield ownValue.get() >= requiredMm
+                        ? pass(rule, value, fact.confidence(), fact.box())
+                        : finding(rule, ComplianceStatus.NON_COMPLIANT,
+                                "Measured " + rule.field() + " is " + formatNumber(ownValue.get())
+                                        + "mm, below the " + formatNumber(requiredMm)
+                                        + "mm minimum required for a declared quantity of "
+                                        + formatNumber(quantityInGramsOrMl.get()) + " g/ml.",
+                                fact.confidence(), value, fact.box());
+            }
         };
+    }
+
+    /** Rows are ascending by {@code upToInclusive}; the first row the quantity fits under wins,
+     * falling through to the last (unbounded, {@code upToInclusive == null}) row otherwise. */
+    private Optional<RuleDefinition.QuantityBand> selectBand(
+            List<RuleDefinition.QuantityBand> bands, double quantity) {
+        if (bands == null) {
+            return Optional.empty();
+        }
+        for (RuleDefinition.QuantityBand band : bands) {
+            if (band.upToInclusive() == null || quantity <= band.upToInclusive()) {
+                return Optional.of(band);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** Parses a normalized quantity string like "500 g", "2 kg", "1 L", "500 ml" into grams or
+     * millilitres (Table-I's own unit) - kg and L are converted ×1000; a unit outside
+     * {g, kg, ml, l} (cm, N, U, pcs, ...) means the quantity is declared by length/area/number,
+     * i.e. Table-II territory, which is deliberately out of scope (empty result, never a
+     * silently wrong Table-I comparison). */
+    private Optional<Double> parseGramsOrMillilitres(String value) {
+        java.util.regex.Matcher matcher =
+                Pattern.compile("(\\d+(?:[.,]\\d+)?)\\s*(kg|g|l|ml)\\b", Pattern.CASE_INSENSITIVE).matcher(value);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        double amount;
+        try {
+            amount = Double.parseDouble(matcher.group(1).replace(',', '.'));
+        } catch (NumberFormatException ex) {
+            return Optional.empty();
+        }
+        String unit = matcher.group(2).toLowerCase(java.util.Locale.ROOT);
+        double inBaseUnit = ("kg".equals(unit) || "l".equals(unit)) ? amount * 1000 : amount;
+        return Optional.of(inBaseUnit);
+    }
+
+    private String formatNumber(double value) {
+        // Whole numbers print without a trailing ".0" ("2mm", not "2.0mm"); fractional
+        // measurements keep up to 2 decimal places.
+        java.math.BigDecimal rounded = java.math.BigDecimal.valueOf(value).setScale(2, java.math.RoundingMode.HALF_UP)
+                .stripTrailingZeros();
+        return rounded.scale() < 0 ? rounded.setScale(0).toPlainString() : rounded.toPlainString();
     }
 
     // ------------------------------------------------------------------

@@ -16,6 +16,7 @@ import com.lmguard.dto.inspection.InspectionProductRequest;
 import com.lmguard.dto.inspection.InspectionResponse;
 import com.lmguard.dto.inspection.InspectionSubmitRequest;
 import com.lmguard.dto.inspection.InspectionSummaryResponse;
+import com.lmguard.dto.inspection.MeasurementSubmitRequest;
 import com.lmguard.entity.enums.InspectionStatus;
 import com.lmguard.mapper.EvidenceMapper;
 import com.lmguard.mapper.InspectionMapper;
@@ -126,6 +127,31 @@ public class InspectionController {
     public ResponseEntity<ApiResponse<InspectionResponse>> analyze(@PathVariable UUID id) {
         return ResponseEntity.ok(
                 ApiResponse.success("Inspection completed successfully", inspectionService.analyze(id)));
+    }
+
+    @PostMapping("/{id}/measurements")
+    @Operation(summary = "Submit an inspector-captured physical measurement",
+            description = """
+                    Records a measurement the AI vision pipeline cannot produce - currently only
+                    `NUMERAL_HEIGHT_MM`, the printed numeral height on the principal display
+                    panel in millimetres, captured via the app's AR depth-measurement feature
+                    (Android/ARCore only for now). No physical scale can be recovered from an
+                    ordinary photo without a calibration reference, so this is a separate
+                    inspector action, not part of `/analyze`.
+
+                    Re-evaluates the inspection against everything currently persisted
+                    (this measurement plus whatever the last `/analyze` found) and returns the
+                    updated result - the package photo is not re-analysed. Calling this again for
+                    the same `fieldName` replaces the previous value, and a later `/analyze` does
+                    not erase it.
+                    """)
+    public ResponseEntity<ApiResponse<InspectionResponse>> submitMeasurement(
+            @PathVariable UUID id,
+            @Valid @RequestBody MeasurementSubmitRequest request) {
+
+        InspectionResponse response = inspectionService.submitMeasurement(
+                id, request.fieldName(), request.value(), request.confidence());
+        return ResponseEntity.ok(ApiResponse.success("Measurement recorded", response));
     }
 
     @GetMapping("/{id}")

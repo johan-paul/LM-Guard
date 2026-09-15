@@ -145,25 +145,92 @@ public class InspectionAnalysisService {
             inspection.getProduct().setBrand(inspection.getEstablishment());
         }
 
-        // --- 2. persist the observations before judging them ---
-        List<ExtractedField> fields = persistExtractedFields(inspection, analysis);
+        // --- 2. persist the observations before judging them --- (this replaces AI-derived
+        // fields only; any inspector-submitted measurement from a previous run, e.g.
+        // NUMERAL_HEIGHT_MM, survives untouched - see persistExtractedFields)
+        persistExtractedFields(inspection, analysis);
 
-        // --- 3. deterministic rule engine decides compliance ---
-        InspectionFacts facts = InspectionFacts.from(analysis);
+        // --- product declaration history --- (independent of the evaluate/persist steps
+        // below; needs `analysis` specifically, so it stays here rather than in the shared
+        // evaluateAndPersist() that submitMeasurement() also calls)
+        recordProductVersion(inspection, analysis);
+
+        // --- 3-7: deterministic rule engine decides compliance, violations, risk, final state.
+        // Facts are rebuilt from everything now persisted (not just this run's AI result) so a
+        // measurement submitted on an earlier run stays part of the evaluation, not just the
+        // database row - see submitMeasurement, which sources facts the same way.
+        List<ExtractedField> fields = extractedFieldRepository.findByInspectionIdOrderByFieldNameAsc(inspectionId);
+        InspectionFacts facts = InspectionFacts.from(inspectionId, fields);
+        InspectionResponse response = evaluateAndPersist(inspection, facts, fields, analysis.warnings());
+
+        log.info("Inspection {} analysed via AI (provider {})", inspectionId, analysis.provider());
+        return response;
+    }
+
+    /**
+     * Re-evaluates an inspection against a single inspector-submitted measurement (currently
+     * only {@link ProductField#NUMERAL_HEIGHT_MM}, captured via AR depth measurement rather
+     * than the AI vision pipeline - see that constant's javadoc for why it can't come from
+     * {@code /analyze}). Upserts the field, then re-runs the SAME evaluate-persist-risk
+     * pipeline {@link #run} uses, sourced from everything currently persisted for this
+     * inspection rather than a fresh {@link AIAnalysisResult} - the photo is not re-analysed.
+     *
+     * @throws BadRequestException if {@code fieldName} is not one this endpoint accepts
+     * @throws com.lmguard.exception.ResourceNotFoundException if the inspection does not exist
+     */
+    @Transactional
+    public InspectionResponse submitMeasurement(UUID inspectionId, String fieldName, String value, Double confidence) {
+        Inspection inspection = inspectionRepository.findDetailedById(inspectionId)
+                .orElseThrow(() -> ResourceNotFoundException.of(ErrorCode.INSPECTION_NOT_FOUND, inspectionId));
+
+        String normalizedField = fieldName == null ? "" : fieldName.trim().toUpperCase(Locale.ROOT);
+        if (!ProductField.INSPECTOR_MEASURED_FIELDS.contains(normalizedField)) {
+            throw new BadRequestException(ErrorCode.VALIDATION_FAILED,
+                    "fieldName must be one of " + ProductField.INSPECTOR_MEASURED_FIELDS + ", got: " + fieldName);
+        }
+
+        ExtractedField field = extractedFieldRepository.findByInspectionIdAndFieldName(inspectionId, normalizedField)
+                .orElseGet(() -> ExtractedField.builder().inspection(inspection).fieldName(normalizedField).build());
+        field.setFieldValue(value);
+        field.setConfidence(toConfidence(confidence == null ? 1.0 : confidence));
+        // A physical measurement has no image region to point at, and no raw OCR text behind it -
+        // clear both in case this field previously held (stale) values from a different source.
+        field.setBoundingBoxX(null);
+        field.setBoundingBoxY(null);
+        field.setBoundingBoxWidth(null);
+        field.setBoundingBoxHeight(null);
+        field.setRawText(null);
+        extractedFieldRepository.save(field);
+
+        List<ExtractedField> fields = extractedFieldRepository.findByInspectionIdOrderByFieldNameAsc(inspectionId);
+        InspectionFacts facts = InspectionFacts.from(inspectionId, fields);
+
+        InspectionResponse response = evaluateAndPersist(inspection, facts, fields, List.of());
+        log.info("Inspection {} re-evaluated after inspector-submitted measurement {}={}",
+                inspectionId, normalizedField, value);
+        return response;
+    }
+
+    // ------------------------------------------------------------------
+    // Pipeline steps
+    // ------------------------------------------------------------------
+
+    /**
+     * Deterministic rule engine decides compliance, then violations/evidence, risk, and the
+     * inspection's final advisory state are all persisted from that one verdict. Shared by
+     * {@link #run} (fed fresh AI facts) and {@link #submitMeasurement} (fed facts rebuilt from
+     * whatever is currently persisted) so the two entry points can never drift out of sync.
+     */
+    private InspectionResponse evaluateAndPersist(Inspection inspection, InspectionFacts facts,
+                                                   List<ExtractedField> fields, List<String> warnings) {
         ComplianceResult compliance = ruleEngineService.evaluate(facts, rulesProperties.activeVersion());
         inspection.setRulesetVersion(compliance.rulesetVersion());
 
-        // --- 4. violations, each with its evidence ---
         List<Violation> violations = persistViolations(inspection, compliance);
 
-        // --- 5. risk ---
         RiskAssessment risk = assessRisk(inspection, compliance);
         RiskScore riskScore = persistRiskScore(inspection, risk);
 
-        // --- 6. product declaration history ---
-        recordProductVersion(inspection, analysis);
-
-        // --- 7. final state ---
         // The rule engine's verdict is recorded as an advisory suggestion only. It never
         // becomes the inspection's authoritative status - that is set exclusively by the
         // inspector's own POST .../submit, independent of what AI/rules suggested here.
@@ -176,16 +243,12 @@ public class InspectionAnalysisService {
         inspection.setAnalyzedAt(Instant.now());
         inspectionRepository.save(inspection);
 
-        log.info("Inspection {} analysed: AI suggests {} (risk {}/{}, ruleset {}, provider {}, {} violation(s))",
-                inspectionId, inspection.getAiSuggestedStatus(), risk.totalScore(), risk.riskLevel(),
-                compliance.rulesetVersion(), analysis.provider(), violations.size());
+        log.info("Inspection {} evaluated: AI suggests {} (risk {}/{}, ruleset {}, {} violation(s))",
+                inspection.getId(), inspection.getAiSuggestedStatus(), risk.totalScore(), risk.riskLevel(),
+                compliance.rulesetVersion(), violations.size());
 
-        return inspectionMapper.toResponse(inspection, fields, violations, riskScore, analysis.warnings());
+        return inspectionMapper.toResponse(inspection, fields, violations, riskScore, warnings);
     }
-
-    // ------------------------------------------------------------------
-    // Pipeline steps
-    // ------------------------------------------------------------------
 
     /** Registers a new product from the AI's own reading of the package - COMMODITY_NAME and
      * MANUFACTURER, the two declarations Legal Metrology requires on every principal display
@@ -206,9 +269,13 @@ public class InspectionAnalysisService {
         return productService.requireById(createdId);
     }
 
-    /** Replaces any previous observations, so re-analysing an inspection is idempotent. */
+    /** Replaces any previous AI-derived observations, so re-analysing an inspection is
+     * idempotent - but never touches fields an inspector submitted directly (see
+     * ProductField.INSPECTOR_MEASURED_FIELDS): a fresh photo re-analysis has nothing to say
+     * about a physical measurement taken separately, and must not silently erase it. */
     private List<ExtractedField> persistExtractedFields(Inspection inspection, AIAnalysisResult analysis) {
-        extractedFieldRepository.deleteByInspectionId(inspection.getId());
+        extractedFieldRepository.deleteByInspectionIdAndFieldNameNotIn(
+                inspection.getId(), ProductField.INSPECTOR_MEASURED_FIELDS);
         extractedFieldRepository.flush();
 
         List<ExtractedField> fields = analysis.facts().stream()

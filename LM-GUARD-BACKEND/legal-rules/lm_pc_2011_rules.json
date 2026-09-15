@@ -344,7 +344,32 @@
       "schedule_ref": "TABLE_I_TABLE_II (embedded in Rule 7, not a numbered Schedule)",
       "applicability": "Chapter II packages",
       "verification": {"image": true, "ocr": false, "physical_test": true, "external_data": false, "human_review": true},
-      "notes": "Explicitly NOT_ASSESSABLE_FROM_IMAGE without a calibration reference of known physical size in the same photo (a coin, a ruler, a printed scale bar). No such mechanism exists in this system. A future version could accept a reference object or a package of known standard dimensions to calibrate px-per-mm, but that is out of scope here.",
+      "tableI_weightOrVolume": {
+        "title": "Minimum height of numeral, by net quantity in weight/volume (Rule 7(2)(i))",
+        "unit": "mm",
+        "rows": [
+          {"declaredQuantityRange": "Up to 200 g/ml", "minHeightNormalMm": 1, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 2},
+          {"declaredQuantityRange": "Above 200 g/ml and up to 500 g/ml", "minHeightNormalMm": 2, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 4},
+          {"declaredQuantityRange": "Above 500 g/ml", "minHeightNormalMm": 4, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 6}
+        ]
+      },
+      "tableII_lengthAreaNumber": {
+        "title": "Minimum height of numeral, by net quantity in length/area/number or PDP area (Rule 7(2)(ii))",
+        "unit": "mm",
+        "rows": [
+          {"declaredQuantityRange": "Up to 100 cm2", "minHeightNormalMm": 1, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 2},
+          {"declaredQuantityRange": "Above 100 cm2 and up to 500 cm2", "minHeightNormalMm": 2, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 4},
+          {"declaredQuantityRange": "Above 500 cm2 and up to 2500 cm2", "minHeightNormalMm": 4, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 6},
+          {"declaredQuantityRange": "Above 2500 cm2", "minHeightNormalMm": 6, "minHeightBlownFormedMoldedEmbossedPerforatedMm": 6}
+        ]
+      },
+      "letterHeight": {
+        "title": "General letter height floor (Rule 7(3)), independent of Table-I/II which govern numerals specifically",
+        "minHeightNormalMm": 1,
+        "minHeightBlownFormedMoldedEmbossedPerforatedMm": 2,
+        "minWidthToHeightRatio": "1/3, except numeral '1' and letters i, I, l"
+      },
+      "notes": "Table-I/Table-II/letter-height thresholds above are transcribed verbatim from the source PDF (pages 8-9) supplied 2026-09-15 -- previously this entry referenced the tables by name only, with no numeric data, because no source document had been supplied to transcribe from. Verification stays image+physical_test: the THRESHOLDS are now real structured data the deterministic rule engine can compare against, but the MEASUREMENT itself (an actual numeral height in mm) still cannot be derived from an ordinary package photo without a calibration reference -- that remains a physical/AR-measurement problem, not a legal-data gap. See the Flutter AR-measurement feature (planned, not yet built) for the intended source of a NUMERAL_HEIGHT_MM fact this rule can then evaluate.",
       "evidence_required": false,
       "source": {"document": "Legal Metrology (Packaged Commodities) Rules, 2011", "rule": "7(2)-(3) + Table-I/II", "page": 8}
     },

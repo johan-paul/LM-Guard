@@ -398,6 +398,25 @@ public class InspectionService {
         }
     }
 
+    /**
+     * Records an inspector-submitted measurement (currently only numeral height, in mm, from an
+     * AR depth measurement - see {@code ProductField.INSPECTOR_MEASURED_FIELDS}) and re-runs
+     * rule evaluation from everything currently persisted, without re-analysing the photo. Not
+     * transactional by design, same reason as {@link #analyze}: a failure here must still leave
+     * a durable, explained state rather than an inspection stuck mid-write.
+     */
+    public InspectionResponse submitMeasurement(UUID inspectionId, String fieldName, String value, Double confidence) {
+        requireInspectionExists(inspectionId);
+
+        statusWriter.markProcessing(inspectionId);
+        try {
+            return analysisService.submitMeasurement(inspectionId, fieldName, value, confidence);
+        } catch (RuntimeException ex) {
+            statusWriter.markFailed(inspectionId, ex.getMessage());
+            throw ex;
+        }
+    }
+
     // ------------------------------------------------------------------
     // Read
     // ------------------------------------------------------------------

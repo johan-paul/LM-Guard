@@ -147,6 +147,8 @@ public class RuleCatalog {
                 parsed.min(),
                 parsed.max(),
                 parsed.minLength(),
+                parsed.bandField(),
+                parsed.bands(),
                 rule.getSeverity(),
                 parsed.finding(),
                 parsed.remediation());

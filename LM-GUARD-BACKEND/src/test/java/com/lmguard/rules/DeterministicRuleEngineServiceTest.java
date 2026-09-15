@@ -55,14 +55,20 @@ class DeterministicRuleEngineServiceTest {
 
     private RuleDefinition requiredRule(String field) {
         return new RuleDefinition(null, "R-" + field, field + " required", "SAMPLE", field,
-                RuleType.REQUIRED_FIELD, true, 0.70, null, null, null, null, Severity.MAJOR,
+                RuleType.REQUIRED_FIELD, true, 0.70, null, null, null, null, null, null, Severity.MAJOR,
                 "Required declaration not detected", "Print the declaration");
     }
 
     private RuleDefinition patternRule(String field, String pattern) {
         return new RuleDefinition(null, "P-" + field, field + " format", "SAMPLE", field,
-                RuleType.PATTERN_MATCH, false, 0.70, pattern, null, null, null, Severity.MINOR,
+                RuleType.PATTERN_MATCH, false, 0.70, pattern, null, null, null, null, null, Severity.MINOR,
                 "Value is not in a valid format", null);
+    }
+
+    private RuleDefinition bandRule(String field, String bandField, List<RuleDefinition.QuantityBand> bands) {
+        return new RuleDefinition(null, "B-" + field, field + " band", "SAMPLE", field,
+                RuleType.NUMERIC_BAND, true, 0.70, null, null, null, null, bandField, bands, Severity.MAJOR,
+                null, null);
     }
 
     private InspectionFacts facts(Map<String, FactValue> values) {
@@ -215,7 +221,7 @@ class DeterministicRuleEngineServiceTest {
         void minLength() {
             RuleDefinition rule = new RuleDefinition(null, "L-MFR", "manufacturer length", "SAMPLE",
                     "MANUFACTURER", RuleType.MIN_LENGTH, false, 0.70, null, null, null, 3,
-                    Severity.MINOR, "Too short", null);
+                    null, null, Severity.MINOR, "Too short", null);
             givenRules(rule);
 
             assertThat(engine.evaluate(facts(Map.of("MANUFACTURER", present("AB", 0.95))), VERSION).status())
@@ -229,13 +235,140 @@ class DeterministicRuleEngineServiceTest {
         void numericRange() {
             RuleDefinition rule = new RuleDefinition(null, "N-MRP", "price range", "SAMPLE", "MRP",
                     RuleType.NUMERIC_RANGE, false, 0.70, null, 1.0, 10000.0, null,
-                    Severity.MAJOR, "Price out of range", null);
+                    null, null, Severity.MAJOR, "Price out of range", null);
             givenRules(rule);
 
             assertThat(engine.evaluate(facts(Map.of("MRP", present("Rs. 99.00", 0.95))), VERSION).status())
                     .isEqualTo(ComplianceStatus.COMPLIANT);
             assertThat(engine.evaluate(facts(Map.of("MRP", present("99999", 0.95))), VERSION).status())
                     .isEqualTo(ComplianceStatus.NON_COMPLIANT);
+        }
+    }
+
+    @Nested
+    @DisplayName("NUMERIC_BAND (Rule 7 Table-I numeral height)")
+    class NumericBand {
+
+        private final List<RuleDefinition.QuantityBand> tableI = List.of(
+                new RuleDefinition.QuantityBand(200.0, 1.0),
+                new RuleDefinition.QuantityBand(500.0, 2.0),
+                new RuleDefinition.QuantityBand(null, 4.0));
+
+        @Test
+        @DisplayName("passes when the measured height meets the band for a small declared quantity")
+        void meetsSmallBand() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            ComplianceResult result = engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("1.2", 0.95),
+                    "NET_QUANTITY", present("100 g", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.COMPLIANT);
+        }
+
+        @Test
+        @DisplayName("fails when the measured height is below the band's minimum")
+        void belowBandMinimum() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            ComplianceResult result = engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("0.6", 0.95),
+                    "NET_QUANTITY", present("100 g", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.NON_COMPLIANT);
+            assertThat(result.breaches().get(0).finding()).contains("0.6mm").contains("1mm");
+        }
+
+        @Test
+        @DisplayName("selects the middle band (above 200, up to 500 g/ml)")
+        void middleBand() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            assertThat(engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("1.9", 0.95),
+                    "NET_QUANTITY", present("300 g", 0.95))), VERSION).status())
+                    .isEqualTo(ComplianceStatus.NON_COMPLIANT);
+            assertThat(engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("2.0", 0.95),
+                    "NET_QUANTITY", present("300 g", 0.95))), VERSION).status())
+                    .isEqualTo(ComplianceStatus.COMPLIANT);
+        }
+
+        @Test
+        @DisplayName("selects the unbounded top band (above 500 g/ml)")
+        void unboundedTopBand() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            assertThat(engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("3.9", 0.95),
+                    "NET_QUANTITY", present("1000 g", 0.95))), VERSION).status())
+                    .isEqualTo(ComplianceStatus.NON_COMPLIANT);
+            assertThat(engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("4.0", 0.95),
+                    "NET_QUANTITY", present("1000 g", 0.95))), VERSION).status())
+                    .isEqualTo(ComplianceStatus.COMPLIANT);
+        }
+
+        @Test
+        @DisplayName("converts kg to g before selecting the band")
+        void convertsKilograms() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            // 2 kg = 2000 g -> the unbounded top band (>500 g/ml) requires 4mm.
+            ComplianceResult result = engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("2.5", 0.95),
+                    "NET_QUANTITY", present("2 kg", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.NON_COMPLIANT);
+        }
+
+        @Test
+        @DisplayName("converts L to ml before selecting the band")
+        void convertsLitres() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            // 1 L = 1000 ml -> unbounded top band, 4mm required.
+            assertThat(engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("4.0", 0.95),
+                    "NET_QUANTITY", present("1 L", 0.95))), VERSION).status())
+                    .isEqualTo(ComplianceStatus.COMPLIANT);
+        }
+
+        @Test
+        @DisplayName("is INCONCLUSIVE, not silently wrong, when quantity is declared by number (Table-II territory)")
+        void tableIiUnitIsInconclusive() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            ComplianceResult result = engine.evaluate(facts(Map.of(
+                    "NUMERAL_HEIGHT_MM", present("1.0", 0.95),
+                    "NET_QUANTITY", present("12 N", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
+            assertThat(result.breaches().get(0).finding()).contains("Table-II");
+        }
+
+        @Test
+        @DisplayName("is INCONCLUSIVE when NET_QUANTITY was not assessed at all")
+        void bandFieldMissing() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            ComplianceResult result =
+                    engine.evaluate(facts(Map.of("NUMERAL_HEIGHT_MM", present("1.0", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
+            assertThat(result.breaches().get(0).finding()).contains("NET_QUANTITY").contains("not read");
+        }
+
+        @Test
+        @DisplayName("is INCONCLUSIVE when the measurement itself was never submitted")
+        void measurementNotAssessed() {
+            givenRules(bandRule("NUMERAL_HEIGHT_MM", "NET_QUANTITY", tableI));
+
+            ComplianceResult result =
+                    engine.evaluate(facts(Map.of("NET_QUANTITY", present("100 g", 0.95))), VERSION);
+
+            assertThat(result.status()).isEqualTo(ComplianceStatus.INCONCLUSIVE);
+            assertThat(result.breaches().get(0).finding()).contains("not assessed");
         }
     }
 

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.lmguard.entity.enums.RuleType;
 import com.lmguard.entity.enums.Severity;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -23,6 +24,10 @@ import java.util.UUID;
  * @param min            for NUMERIC_RANGE: inclusive lower bound
  * @param max            for NUMERIC_RANGE: inclusive upper bound
  * @param minLength      for MIN_LENGTH: minimum acceptable length
+ * @param bandField      for NUMERIC_BAND: the OTHER field whose numeric value selects which
+ *                       row of {@code bands} applies (e.g. {@code "NET_QUANTITY"})
+ * @param bands          for NUMERIC_BAND: rows ascending by {@link QuantityBand#upToInclusive()};
+ *                       the last row's {@code upToInclusive} is null, meaning "and above"
  * @param finding        plain-language statement recorded when the rule does not pass
  * @param remediation    suggested corrective action
  */
@@ -40,10 +45,18 @@ public record RuleDefinition(
         Double min,
         Double max,
         Integer minLength,
+        String bandField,
+        List<QuantityBand> bands,
         Severity severity,
         String finding,
         String remediation
 ) {
+
+    /** One row of a NUMERIC_BAND threshold table - e.g. Rule 7 Table-I's "up to 200 g/ml -> at
+     * least 1mm". {@code upToInclusive} null means unbounded (the last, highest band). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record QuantityBand(Double upToInclusive, Double minHeightMm) {
+    }
 
     public boolean isRequired() {
         return Boolean.TRUE.equals(required);
@@ -66,6 +79,7 @@ public record RuleDefinition(
             case PATTERN_MATCH -> "Declaration " + field + " is present but not in a valid format";
             case NUMERIC_RANGE -> "Declaration " + field + " is outside the permitted range";
             case MIN_LENGTH -> "Declaration " + field + " is too short to be valid";
+            case NUMERIC_BAND -> "Declaration " + field + " does not meet the minimum required for the declared quantity";
         };
     }
 }

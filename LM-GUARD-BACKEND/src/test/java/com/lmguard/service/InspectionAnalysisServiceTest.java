@@ -48,6 +48,7 @@ import org.mockito.quality.Strictness;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -114,9 +115,18 @@ class InspectionAnalysisServiceTest {
         when(ruleCatalog.load(anyString())).thenReturn(demoRuleSet());
 
         // Persistence: echo entities straight back so the pipeline can be observed end to end.
-        when(extractedFieldRepository.saveAll(any()))
-                .thenAnswer(invocation -> List.copyOf(invocation.getArgument(0)));
-        when(extractedFieldRepository.findByInspectionIdOrderByFieldNameAsc(any())).thenReturn(List.of());
+        // `run()` re-fetches via findByInspectionIdOrderByFieldNameAsc after persisting (so a
+        // measurement submitted on an earlier run survives a later re-analyze - see
+        // InspectionAnalysisService#persistExtractedFields) rather than trusting saveAll's own
+        // return value, so this stub must be stateful and reflect the most recent save.
+        AtomicReference<List<ExtractedField>> savedFields = new AtomicReference<>(List.of());
+        when(extractedFieldRepository.saveAll(any())).thenAnswer(invocation -> {
+            List<ExtractedField> saved = List.copyOf(invocation.getArgument(0));
+            savedFields.set(saved);
+            return saved;
+        });
+        when(extractedFieldRepository.findByInspectionIdOrderByFieldNameAsc(any()))
+                .thenAnswer(invocation -> savedFields.get());
         when(violationRepository.findByInspectionIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
         when(violationRepository.findPreviousRuleCodesForProduct(any(), any())).thenReturn(List.of());
         when(violationRepository.save(any(Violation.class))).thenAnswer(invocation -> {
@@ -245,7 +255,8 @@ class InspectionAnalysisServiceTest {
         assertThat(response.fields()).isNotEmpty();
         assertThat(response.fields())
                 .anySatisfy(field -> assertThat(field.name()).isEqualTo(ProductField.MRP));
-        org.mockito.Mockito.verify(extractedFieldRepository).deleteByInspectionId(inspection.getId());
+        org.mockito.Mockito.verify(extractedFieldRepository)
+                .deleteByInspectionIdAndFieldNameNotIn(inspection.getId(), ProductField.INSPECTOR_MEASURED_FIELDS);
         org.mockito.Mockito.verify(extractedFieldRepository).saveAll(any());
     }
 
@@ -304,7 +315,7 @@ class InspectionAnalysisServiceTest {
 
     private RuleDefinition required(String code, String field) {
         return new RuleDefinition(null, code, field + " required", "SAMPLE RULE", field,
-                RuleType.REQUIRED_FIELD, true, 0.70, null, null, null, null, Severity.MAJOR,
+                RuleType.REQUIRED_FIELD, true, 0.70, null, null, null, null, null, null, Severity.MAJOR,
                 "Required declaration not detected", "Print the declaration on the package");
     }
 
