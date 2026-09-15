@@ -34,3 +34,9 @@ class AnalyzeResponse(BaseModel):
     modelVersion: str
     warnings: list[str] = Field(default_factory=list)
     fields: list[FieldOut] = Field(default_factory=list)
+    # Structured counterpart to `warnings` for image-quality specifically, so a client can
+    # branch on machine-readable codes instead of parsing free-text warning strings. Additive:
+    # both this model and the Java DTO it mirrors ignore unknown fields, so either side can
+    # deploy independently.
+    qualityScore: float = 0.0
+    qualityIssues: list[str] = Field(default_factory=list)  # BLUR | GLARE | LOW_RESOLUTION | LOW_CONTRAST

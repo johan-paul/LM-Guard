@@ -12,6 +12,13 @@ httpx==0.28.1
 google-genai==2.22.0
 python-multipart==0.0.32
 
+# Indic-script (Devanagari/Tamil/Telugu/Kannada/Malayalam) OCR pass. Needs the tesseract-ocr
+# system binary plus the matching language packs installed separately -- this pip package is
+# only a thin wrapper around that binary. See ai-service/README.md for install instructions;
+# absent/broken install degrades gracefully (that OCR pass is skipped with a warning, service
+# still runs English-only via RapidOCR).
+pytesseract==0.3.13
+
 # No longer imported by vlm.py (Gemini is the active VLM provider) -- left installable in case
 # Anthropic credit is restored and the provider is switched back.
 anthropic==1.4.0

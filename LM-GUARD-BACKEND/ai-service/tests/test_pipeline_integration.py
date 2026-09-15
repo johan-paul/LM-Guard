@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app import normalization, pipeline, vlm
+from app import normalization, pipeline, preprocessing, vlm
 from app.config import settings
 
 
@@ -167,6 +167,102 @@ def test_vlm_label_prefixed_quantity_does_not_override_the_clean_regex_reading(m
 
     net_quantity = result.fields[0]
     assert net_quantity.value == "200 g"  # not "Net Qty 200 g"
+
+
+# ------------------------------------------------------------------
+# Structured quality signal (qualityScore/qualityIssues) and the three-tier preprocessing
+# selection it drives -- see docs/AI_PIPELINE.md and app/pipeline.py.
+# ------------------------------------------------------------------
+
+def test_hard_stop_response_carries_structured_quality_fields(monkeypatch):
+    blank = np.full((900, 900, 3), 255, dtype=np.uint8)
+    ok, encoded = cv2.imencode(".png", blank)
+    assert ok
+    monkeypatch.setattr(pipeline, "fetch_image", lambda url: encoded.tobytes())
+
+    result = pipeline.analyze("http://example.test/blank.png", ["MRP"])
+
+    assert result.qualityScore < settings.min_usable_quality
+    assert set(result.qualityIssues) <= {"BLUR", "GLARE", "LOW_RESOLUTION", "LOW_CONTRAST"}
+    assert result.qualityIssues  # a blank image trips at least one of these
+
+
+def test_normal_path_response_also_carries_structured_quality_fields(monkeypatch):
+    image = _label_image(["MRP Rs. 99.00"])
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    monkeypatch.setattr(pipeline, "fetch_image", lambda url: encoded.tobytes())
+
+    result = pipeline.analyze("http://example.test/label.png", ["MRP"])
+
+    # This synthetic image (small canvas, mostly-white background) does trip some heuristics
+    # (LOW_RESOLUTION/GLARE) even though it's a clean, readable label -- that's expected of the
+    # synthetic fixture, not a bug; what matters here is that the structured fields are present,
+    # valid, and consistent with the gate having passed (this test reaches field extraction at
+    # all, which the gate-tripped tests above do not).
+    assert result.qualityScore >= settings.min_usable_quality
+    assert set(result.qualityIssues) <= {"BLUR", "GLARE", "LOW_RESOLUTION", "LOW_CONTRAST"}
+
+
+def test_good_quality_image_uses_the_light_default_enhancement(monkeypatch):
+    image = _label_image(["MRP Rs. 99.00"])
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    monkeypatch.setattr(pipeline, "fetch_image", lambda url: encoded.tobytes())
+    # This synthetic label scores ~0.55 (see the "structured quality fields" test above); pin
+    # the threshold well below that so this test's tier selection is unambiguous regardless of
+    # the exact score.
+    monkeypatch.setattr(settings, "recoverable_quality_threshold", 0.1)
+
+    calls = {"light": 0, "aggressive": 0}
+    real_light = preprocessing.enhance_for_ocr
+    real_aggressive = preprocessing.enhance_for_ocr_aggressive
+    monkeypatch.setattr(pipeline, "enhance_for_ocr", lambda img: (calls.__setitem__("light", calls["light"] + 1), real_light(img))[1])
+    monkeypatch.setattr(pipeline, "enhance_for_ocr_aggressive", lambda img: (calls.__setitem__("aggressive", calls["aggressive"] + 1), real_aggressive(img))[1])
+
+    pipeline.analyze("http://example.test/label.png", ["MRP"])
+
+    assert calls == {"light": 1, "aggressive": 0}
+
+
+def test_recoverable_poor_quality_image_uses_the_aggressive_enhancement_tier(monkeypatch):
+    # This synthetic label scores ~0.55 (see the "structured quality fields" test above) --
+    # still above the default min_usable_quality gate (0.25), so pinning the recoverable
+    # threshold above that score (but leaving the gate alone) puts it in the aggressive band
+    # without needing to also degrade the image.
+    image = _label_image(["MRP Rs. 99.00"])
+    ok, encoded = cv2.imencode(".png", image)
+    assert ok
+    monkeypatch.setattr(pipeline, "fetch_image", lambda url: encoded.tobytes())
+    monkeypatch.setattr(settings, "recoverable_quality_threshold", 0.99)
+
+    calls = {"light": 0, "aggressive": 0}
+    real_light = preprocessing.enhance_for_ocr
+    real_aggressive = preprocessing.enhance_for_ocr_aggressive
+    monkeypatch.setattr(pipeline, "enhance_for_ocr", lambda img: (calls.__setitem__("light", calls["light"] + 1), real_light(img))[1])
+    monkeypatch.setattr(pipeline, "enhance_for_ocr_aggressive", lambda img: (calls.__setitem__("aggressive", calls["aggressive"] + 1), real_aggressive(img))[1])
+
+    result = pipeline.analyze("http://example.test/label.png", ["MRP"])
+
+    assert result.qualityScore >= settings.min_usable_quality  # gate did not trip
+    assert calls == {"light": 0, "aggressive": 1}
+
+
+def test_enhanced_image_is_never_rescored_to_decide_gating(monkeypatch):
+    # A severely blurred image must stay hard-stopped even though enhancement could trivially
+    # inflate its Laplacian-variance/contrast metrics -- gating must key off the PRE-enhancement
+    # score only (see app/pipeline.py).
+    image = _label_image(["MRP Rs. 99.00"])
+    very_blurry = _blurry(_blurry(_blurry(image)))
+    ok, encoded = cv2.imencode(".png", very_blurry)
+    assert ok
+    monkeypatch.setattr(pipeline, "fetch_image", lambda url: encoded.tobytes())
+    monkeypatch.setattr(settings, "min_usable_quality", 0.9)  # force the gate to trip
+
+    result = pipeline.analyze("http://example.test/blurry.png", ["MRP"])
+
+    assert result.fields[0].value is None
+    assert result.qualityScore < 0.9
 
 
 def test_unfetchable_image_degrades_to_not_detected_rather_than_raising(monkeypatch):

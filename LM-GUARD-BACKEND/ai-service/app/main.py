@@ -12,6 +12,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from .config import settings
+from .ocr import indic_ocr_available
 from .pipeline import analyze
 from .schema import AnalyzeRequest, AnalyzeResponse
 
@@ -31,6 +32,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "vlmEnabled": bool(settings.enable_vlm and settings.gemini_api_key),
+        "indicOcrEnabled": indic_ocr_available(),
         "apiKeyRequired": bool(settings.api_key),
     }
 

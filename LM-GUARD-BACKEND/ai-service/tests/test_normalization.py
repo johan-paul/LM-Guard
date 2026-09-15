@@ -1,6 +1,7 @@
 """Every example here is a real, plausible OCR reading of an Indian retail package -- these
 are the exact "MRP ₹99/-" / "MRP Rs.99" / "Net Qty 500g" style variants the brief calls out."""
 from app.normalization import (
+    detect_scripts,
     normalize_batch_number,
     normalize_consumer_care,
     normalize_date,
@@ -165,3 +166,89 @@ class TestRegexExtractDispatch:
         result = try_regex_extract("MRP", text)
         assert result is not None
         assert result.normalized == "99.00"
+
+
+class TestIndicDigitNormalization:
+    """Every normalize_* function below matches against an ASCII-digit-translated copy of its
+    input (see normalization.py::normalize_mrp's docstring for why this has to happen BEFORE
+    matching, not just on the captured group afterwards -- the date pattern's day/month
+    components use literal ASCII digit-class ranges, not `\\d`, so a native-digit date would
+    never match at all otherwise). What's verified here is that native-script digits are read
+    correctly end to end and the returned value is ASCII, which is what the Java rule engine's
+    numeric comparisons need."""
+
+    def test_devanagari_digits_in_mrp(self):
+        # Devanagari 2=२ 9=९ -> "MRP ₹२९९" is a real MRP of 299.
+        assert normalize_mrp("MRP ₹२९९").normalized == "299"
+
+    def test_tamil_digits_in_quantity(self):
+        # Tamil 5=௫ 0=௦ -> "௫௦௦ g" is 500 g.
+        result = normalize_quantity("௫௦௦ g")
+        assert result.normalized == "500 g"
+
+    def test_devanagari_digits_in_manufacture_date(self):
+        result = normalize_manufacture_date("निर्माण ०३/२०२६")
+        assert result.normalized == "03/2026"
+        assert result.pattern_confidence > 0
+
+    def test_telugu_digits_in_mrp(self):
+        # Telugu 4=౪ 9=౯ -> "౪౯" is 49.
+        assert normalize_mrp("Rs. ౪౯").normalized == "49"
+
+    def test_kannada_digits_in_mrp(self):
+        # Kannada 7=೭ 5=೫ -> "೭೫" is 75.
+        assert normalize_mrp("Rs. ೭೫").normalized == "75"
+
+    def test_malayalam_digits_in_mrp(self):
+        # Malayalam 1=൧ 2=൨ 0=൦ -> "൧൨൦" is 120.
+        assert normalize_mrp("Rs. ൧൨൦").normalized == "120"
+
+
+class TestIndicKeywords:
+    """MFD/EXP disambiguation must work with the regional-language words actually printed on
+    Indian packaging, not just the English abbreviations -- see normalization.py's
+    _MANUFACTURE_KEYWORDS / _EXPIRY_KEYWORDS for why these are additive alternatives, tried
+    regardless of any other script on the line."""
+
+    def test_hindi_manufacture_keyword_is_recognised(self):
+        result = normalize_manufacture_date("निर्माण तिथि 03/2026")
+        assert result.normalized == "03/2026"
+        assert result.pattern_confidence >= 0.85
+
+    def test_hindi_expiry_keyword_is_recognised(self):
+        result = normalize_expiry_date("समाप्ति तिथि 03/2028")
+        assert result.normalized == "03/2028"
+
+    def test_tamil_manufacture_keyword_is_recognised(self):
+        result = normalize_manufacture_date("உற்பத்தி தேதி 03/2026")
+        assert result.normalized == "03/2026"
+
+    def test_telugu_expiry_keyword_is_recognised(self):
+        result = normalize_expiry_date("గడువు తేదీ 03/2028")
+        assert result.normalized == "03/2028"
+
+    def test_kannada_manufacture_keyword_is_recognised(self):
+        result = normalize_manufacture_date("ತಯಾರಿಕಾ ದಿನಾಂಕ 03/2026")
+        assert result.normalized == "03/2026"
+
+    def test_malayalam_expiry_keyword_is_recognised(self):
+        result = normalize_expiry_date("കാലഹരണ തീയതി 03/2028")
+        assert result.normalized == "03/2028"
+
+    def test_a_line_explicitly_labeled_manufacture_is_refused_as_expiry(self):
+        # Same disambiguation guarantee the English keywords already have (see
+        # TestManufactureDateNormalization/TestExpiryDateNormalization above), now for Hindi.
+        result = normalize_expiry_date("निर्माण तिथि 03/2026")
+        assert result.normalized is None
+
+
+class TestDetectScripts:
+    def test_detects_devanagari(self):
+        assert detect_scripts("निर्माण तिथि 03/2026") == {"devanagari"}
+
+    def test_detects_multiple_scripts_on_a_mixed_line(self):
+        # Common on real packaging: English MRP label next to a Tamil price.
+        assert detect_scripts("MRP ரூ. 99") == {"tamil"}
+
+    def test_pure_english_line_detects_nothing(self):
+        assert detect_scripts("MRP Rs. 99.00") == set()

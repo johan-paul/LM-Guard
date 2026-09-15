@@ -32,6 +32,8 @@ def test_analyze_request_and_response_shape(monkeypatch):
                          boundingBox={"x": 64, "y": 210, "width": 150, "height": 54}),
                 FieldOut(name="NET_QUANTITY", value=None, confidence=0.91),
             ],
+            qualityScore=0.7,
+            qualityIssues=["GLARE"],
         )
 
     monkeypatch.setattr("app.main.analyze", fake_analyze)
@@ -53,6 +55,19 @@ def test_analyze_request_and_response_shape(monkeypatch):
     # A field the AI genuinely could not detect: null value, non-null confidence, no box.
     assert body["fields"][1]["value"] is None
     assert body["fields"][1]["boundingBox"] is None
+    # Structured quality signal, additive to `warnings` -- see AiAnalyzeResponse.java.
+    assert body["qualityScore"] == 0.7
+    assert body["qualityIssues"] == ["GLARE"]
+
+
+def test_quality_fields_default_when_not_set_by_the_pipeline():
+    # A response built without qualityScore/qualityIssues (e.g. an older pipeline path) must
+    # still serialize valid, harmless defaults, not fail or omit the keys -- the Java DTO this
+    # mirrors uses @JsonIgnoreProperties(ignoreUnknown=true), so both sides tolerate the other
+    # being one deploy behind.
+    response = AnalyzeResponse(modelVersion="test-1.0", fields=[])
+    assert response.qualityScore == 0.0
+    assert response.qualityIssues == []
 
 
 def test_missing_image_url_is_a_400_not_a_500():

@@ -17,10 +17,12 @@ POST /analyze  (imageUrl, inspectionId, requestedFields)
   image quality check  ->  too poor?  -> return "not detected" for every field + a warning
         |
         v
-  preprocess (denoise, CLAHE contrast, resize)
+  preprocess (tiered: light denoise/CLAHE, or a stronger gamma/upscale/adaptive-threshold
+              pass for images in the "recoverable but poor" quality band -- resize)
         |
         v
-  multi-pass OCR (RapidOCR: original image + enhanced image, merged/deduped)
+  multi-pass OCR (RapidOCR: original + enhanced image; Tesseract: enhanced image, Indic
+                   scripts -- Devanagari/Tamil/Telugu/Kannada/Malayalam; merged/deduped)
         |
         +------------------------------+
         |                               |
@@ -49,6 +51,27 @@ PaddlePaddle's own installer is a materially higher-risk dependency for a demo t
 run reliably on a judge's machine. If your deployment target can commit to PaddlePaddle
 specifically, `ocr.py` is a single, isolated module -- swapping the engine means changing
 `_engine()` and `_run_single_pass()` there and nowhere else.
+
+## Why Tesseract for Indic scripts, and the system-dependency exception this creates
+
+RapidOCR's bundled recognition model reads English/Latin script only. Most Indian retail
+packaging carries required declarations in a regional language too, so `ocr.py` runs a third
+OCR pass via `pytesseract` for Hindi/Devanagari (also covering Marathi and Nepali), Tamil,
+Telugu, Kannada and Malayalam. Tesseract was chosen over extending RapidOCR/PaddleOCR because
+it has trained data for all five scripts, including Malayalam, which PaddleOCR's multilingual
+model zoo does not cover.
+
+This is a **deliberate exception** to the "Why RapidOCR instead of PaddleOCR" reasoning above:
+Tesseract is not a pip-only dependency, it needs the `tesseract-ocr` binary and language packs
+installed on the host/container. The Dockerfile installs them via `apt-get`
+(`tesseract-ocr tesseract-ocr-hin tesseract-ocr-tam tesseract-ocr-tel tesseract-ocr-kan
+tesseract-ocr-mal`). For local Windows development, install Tesseract via the
+[UB-Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki) (select the Indic
+language packs during setup), then either add it to `PATH` or set `AI_TESSERACT_CMD` to its
+full path (e.g. `C:\Program Files\Tesseract-OCR\tesseract.exe`) in `.env`. A missing/broken
+install does not crash the service -- `AI_ENABLE_INDIC_OCR` degrades gracefully, same as
+`AI_ENABLE_VLM`: that OCR pass is skipped with a warning and the service still runs
+English-only via RapidOCR.
 
 ## Why Gemini for the VLM step
 
@@ -115,7 +138,13 @@ response's `warnings`. What that means concretely:
   schema -- no multi-panel fusion. See `docs/IMPLEMENTATION_AUDIT.md` §4.
 - No barcode/GTIN decoding.
 - No text-height/contrast/placement measurement in physical units (no calibration reference
-  in an arbitrary photo -- see Rule 7 in `legal-rules/lm_pc_2011_rules.json`).
+  in an arbitrary photo -- see Rule 7 in `legal-rules/lm_pc_2011_rules.json`). A phone-AR-depth
+  based measurement feature is planned separately (Flutter-side, not this service).
+- Indic-script (Tesseract) OCR is a single combined-language pass, not one model per script --
+  see `app/config.py`'s `tesseract_indic_langs` comment for why. Month *names* in Indic
+  scripts (e.g. "जनवरी") are not recognised by the date regexes in `normalization.py` -- only
+  pure-numeral dates (`MM/YYYY` etc., including native-script digits) are; a fine-tuned model
+  covering this properly is tracked as a separate, larger effort.
 - Date-vs-date disambiguation (manufacture vs. expiry) relies on a nearby keyword ("MFD",
   "EXP", "Best before"); an unlabeled bare date is still returned, but at reduced confidence,
   for whichever field asked.

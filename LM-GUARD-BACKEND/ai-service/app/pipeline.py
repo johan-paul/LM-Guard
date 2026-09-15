@@ -28,7 +28,7 @@ from . import normalization, vlm
 from .confidence import ConfidenceInputs, fuse
 from .config import settings
 from .ocr import OcrBlock, full_text, run_multi_pass_ocr
-from .preprocessing import assess_quality, enhance_for_ocr, resize_if_needed
+from .preprocessing import assess_quality, enhance_for_ocr, enhance_for_ocr_aggressive, resize_if_needed
 from .schema import AnalyzeResponse, BoundingBoxOut, FieldOut
 
 logger = logging.getLogger("ai_service.pipeline")
@@ -111,10 +111,14 @@ def _encode_jpeg(image_bgr: np.ndarray) -> bytes:
 
 
 def _word_tokens(text: str) -> set[str]:
-    # Alphanumeric runs only, punctuation stripped, so "wecare@in.nestle.com," and
+    # Unicode-aware alphanumeric runs, punctuation stripped, so "wecare@in.nestle.com," and
     # "WECARE@IN.NESTLE.COM" (or "1800-103-1947" and "1800 103 1947") tokenize identically -
     # a plain `.split()` treats those as unrelated strings and silently drops a real match.
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
+    # \w under Python 3's default Unicode regex behaviour also covers Devanagari/Tamil/Telugu/
+    # Kannada/Malayalam letters, not just ASCII -- without this, an Indic-script VLM value can
+    # only ever get a bounding box via the exact-substring branch above, never via token
+    # overlap, because every token from an Indic OCR block would tokenize to the empty set.
+    return set(re.findall(r"\w+", text.lower(), flags=re.UNICODE))
 
 
 def _best_matching_block(needle: Optional[str], blocks: list[OcrBlock]) -> Optional[OcrBlock]:
@@ -209,10 +213,18 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
             modelVersion=MODEL_VERSION,
             warnings=warnings,
             fields=[FieldOut(name=f, value=None, confidence=0.0) for f in requested_fields],
+            qualityScore=quality.score,
+            qualityIssues=quality.issue_codes(),
         )
 
-    # --- 3. preprocessing + multi-pass OCR ---
-    enhanced = enhance_for_ocr(image)
+    # --- 3. preprocessing (tier picked from the PRE-enhancement score -- the enhanced image is
+    # never re-scored to decide tier/gating: CLAHE/gamma/sharpening trivially inflate the
+    # sharpness/contrast metrics without recovering real information, which would let a
+    # genuinely unusable image slip past the gate above) + multi-pass OCR ---
+    if quality.score < settings.recoverable_quality_threshold:
+        enhanced = enhance_for_ocr_aggressive(image)
+    else:
+        enhanced = enhance_for_ocr(image)
     ocr_blocks = run_multi_pass_ocr(image, enhanced)
     ocr_text = full_text(ocr_blocks)
     original_count = sum(1 for b in ocr_blocks if b.pass_name == "original")
@@ -280,4 +292,10 @@ def analyze(image_url: str, requested_fields: list[str]) -> AnalyzeResponse:
         elapsed_ms, len(ocr_blocks), sum(1 for f in fields if f.value), len(fields), vlm_error is None,
     )
 
-    return AnalyzeResponse(modelVersion=MODEL_VERSION, warnings=warnings, fields=fields)
+    return AnalyzeResponse(
+        modelVersion=MODEL_VERSION,
+        warnings=warnings,
+        fields=fields,
+        qualityScore=quality.score,
+        qualityIssues=quality.issue_codes(),
+    )
