@@ -16,6 +16,9 @@ import java.util.UUID;
  * @param modelVersion  version identifier reported by the AI service, when available
  * @param processingMs  wall-clock time the analysis took
  * @param warnings      non-fatal problems worth surfacing (blur, glare, partial crop)
+ * @param qualityScore  0..1 image-quality score reported by the AI service, when available
+ * @param qualityIssues machine-readable quality issue codes (BLUR/GLARE/LOW_RESOLUTION/
+ *                      LOW_CONTRAST) -- the structured counterpart to {@code warnings}
  */
 public record AIAnalysisResult(
         UUID inspectionId,
@@ -23,7 +26,9 @@ public record AIAnalysisResult(
         String provider,
         String modelVersion,
         long processingMs,
-        List<String> warnings
+        List<String> warnings,
+        Double qualityScore,
+        List<String> qualityIssues
 ) {
 
     public static final String PROVIDER_MOCK = "MOCK";
@@ -32,6 +37,13 @@ public record AIAnalysisResult(
     public AIAnalysisResult {
         facts = facts == null ? List.of() : List.copyOf(facts);
         warnings = warnings == null ? List.of() : List.copyOf(warnings);
+        qualityIssues = qualityIssues == null ? List.of() : List.copyOf(qualityIssues);
+    }
+
+    /** Pre-existing callers that don't yet report image quality (mock provider, older tests). */
+    public AIAnalysisResult(UUID inspectionId, List<ExtractedFact> facts, String provider,
+                             String modelVersion, long processingMs, List<String> warnings) {
+        this(inspectionId, facts, provider, modelVersion, processingMs, warnings, null, List.of());
     }
 
     public Optional<ExtractedFact> fact(String fieldName) {

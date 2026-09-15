@@ -106,7 +106,9 @@ public class ExternalAIAnalysisService implements AIAnalysisService {
                 AIAnalysisResult.PROVIDER_EXTERNAL,
                 body.modelVersion(),
                 elapsed,
-                body.warnings() == null ? List.of() : body.warnings());
+                body.warnings() == null ? List.of() : body.warnings(),
+                body.qualityScore(),
+                body.qualityIssues() == null ? List.of() : body.qualityIssues());
     }
 
     @Override
