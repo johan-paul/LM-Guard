@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -9,6 +11,7 @@ import '../../../core/widgets/fields.dart';
 import '../../../core/widgets/panels.dart';
 import '../../../data/mock/mock_data.dart';
 import '../../../data/models/enums.dart';
+import '../../../data/models/product_suggestion.dart';
 import '../../../state/draft_controller.dart';
 
 /// Step 1 — where and why the inspection is being carried out.
@@ -25,20 +28,9 @@ class _InformationStepState extends State<InformationStep> {
   late final TextEditingController _productName;
   bool _isLocating = false;
 
-  static const List<String> _defaultProductSuggestions = <String>[
-    'Lifebuoy Bath Soap 100g',
-    'Lux Toilet Soap 100g',
-    'Classic Salted Chips 50g',
-    'SunFresh Refined Sunflower Oil 1 L',
-    'ABC Instant Noodles Masala 280 g',
-    'FreshBite Cashew Biscuits 200 g',
-    'PureDrop Packaged Drinking Water 1 L',
-    'Tata Salt Vacuum Evaporated 1 kg',
-    'Aashirvaad Whole Wheat Atta 5 kg',
-    'Amul Butter Pasteurized 500 g',
-    'Fortune Mustard Oil 1 L',
-    'Brittania Good Day Cookies 150 g',
-  ];
+  Timer? _searchDebounce;
+  List<ProductSuggestion> _suggestions = const <ProductSuggestion>[];
+  bool _searching = false;
 
   @override
   void initState() {
@@ -68,10 +60,47 @@ class _InformationStepState extends State<InformationStep> {
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _establishment.dispose();
     _location.dispose();
     _productName.dispose();
     super.dispose();
+  }
+
+  /// Debounces the search so it doesn't fire a request on every keystroke -
+  /// [DraftController.searchProducts] just proxies the repository call.
+  void _onProductNameChanged(DraftController draft, String value) {
+    draft.updateProductName(value);
+    _searchDebounce?.cancel();
+    if (value.trim().length < 2) {
+      setState(() => _suggestions = const <ProductSuggestion>[]);
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 300), () => _search(draft, value));
+  }
+
+  Future<void> _search(DraftController draft, String query) async {
+    setState(() => _searching = true);
+    final List<ProductSuggestion> results = await draft.searchProducts(query);
+    if (!mounted) return;
+    setState(() {
+      _suggestions = results;
+      _searching = false;
+    });
+  }
+
+  /// Attaches the already-registered product to this inspection instead of
+  /// leaving the name as free text the AI would later have to re-match.
+  void _selectSuggestion(DraftController draft, ProductSuggestion suggestion) {
+    _productName.text = suggestion.name;
+    _searchDebounce?.cancel();
+    setState(() => _suggestions = const <ProductSuggestion>[]);
+    draft.attachExistingProduct(suggestion.id, suggestion.name);
+  }
+
+  bool _isAttachedToRegisteredProduct(DraftController draft) {
+    final String? id = draft.inspection.product?.id;
+    return id != null && !id.startsWith('PRD-FIELD-');
   }
 
   Future<void> _detectLocation(DraftController draft) async {
@@ -159,44 +188,66 @@ class _InformationStepState extends State<InformationStep> {
         ),
         const SizedBox(height: 16),
 
-        // Product Name Field with History Autocomplete Suggestions
+        // Product name field, backed by a live search against registered products.
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const FieldLabel('Product Name (Optional)', required: false),
             const SizedBox(height: 6),
-            Autocomplete<String>(
-              initialValue: TextEditingValue(text: draft.inspection.product?.name ?? ''),
-              optionsBuilder: (TextEditingValue textEditingValue) {
-                if (textEditingValue.text.isEmpty) {
-                  return const Iterable<String>.empty();
-                }
-                return _defaultProductSuggestions.where((String option) {
-                  return option.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                });
-              },
-              onSelected: (String selection) {
-                _productName.text = selection;
-                draft.updateProductName(selection);
-              },
-              fieldViewBuilder: (BuildContext context, TextEditingController controller, FocusNode focusNode, VoidCallback onFieldSubmitted) {
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onChanged: (String value) {
-                    draft.updateProductName(value);
-                  },
-                  style: AppText.body,
-                  decoration: const InputDecoration(
-                    hintText: 'e.g. Lifebuoy Soap, Classic Salted Chips...',
-                    prefixIcon: Icon(Icons.shopping_bag_outlined, size: 18, color: AppColors.inkFaint),
-                  ),
-                );
-              },
+            TextField(
+              controller: _productName,
+              onChanged: (String value) => _onProductNameChanged(draft, value),
+              style: AppText.body,
+              decoration: const InputDecoration(
+                hintText: 'e.g. Lifebuoy Soap, Classic Salted Chips...',
+                prefixIcon: Icon(Icons.shopping_bag_outlined, size: 18, color: AppColors.inkFaint),
+              ),
             ),
+            if (_searching) ...<Widget>[
+              const SizedBox(height: 5),
+              const Text('Searching registered products...', style: AppText.caption),
+            ],
+            if (_suggestions.isNotEmpty) ...<Widget>[
+              const SizedBox(height: 6),
+              Container(
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(color: AppColors.borderStrong),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: _suggestions
+                      .map((ProductSuggestion suggestion) => InkWell(
+                            onTap: () => _selectSuggestion(draft, suggestion),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+                              child: Row(
+                                children: <Widget>[
+                                  const Icon(Icons.history, size: 16, color: AppColors.inkFaint),
+                                  const SizedBox(width: 8),
+                                  Expanded(child: Text(suggestion.displayLabel, style: AppText.body)),
+                                ],
+                              ),
+                            ),
+                          ))
+                      .toList(),
+                ),
+              ),
+            ],
+            if (draft.productAttachError != null) ...<Widget>[
+              const SizedBox(height: 6),
+              InfoBanner(
+                tone: BannerTone.danger,
+                icon: Icons.error_outline,
+                message: draft.productAttachError!,
+              ),
+            ],
             const SizedBox(height: 5),
-            const Text(
-              'Type to get suggestions from registered products history',
+            Text(
+              _isAttachedToRegisteredProduct(draft)
+                  ? 'Attached to registered product ${draft.inspection.product!.id}'
+                  : 'Type at least 2 characters to search registered products, or enter a new product name',
               style: AppText.caption,
             ),
           ],

@@ -279,6 +279,9 @@ function mapProductDetail(productDto, historyDto, summaryDto, riskDto, violation
     // real entry is honestly a "CHANGE", not an invented pass/fail classification.
     flag: 'CHANGE',
     note: v.source === 'INSPECTION' ? 'Recorded during a field inspection' : `Recorded (${v.source})`,
+    // Which inspection produced this exact snapshot - null for a version sourced from an
+    // online-listing capture rather than a field inspection.
+    sourceInspectionId: v.inspectionId || null,
   }));
 
   const digitalListing = listingDto
@@ -303,6 +306,10 @@ function mapProductDetail(productDto, historyDto, summaryDto, riskDto, violation
     barcode: productDto.barcode || '—',
     netQuantity: latestVersion?.netQuantity || '—',
     mrp: latestVersion?.mrp || '—',
+    // Which inspection wrote the mrp/netQuantity values above - lets an admin trace a
+    // surprising declared value back to the scan that produced it, instead of just seeing
+    // a number with no provenance.
+    declaredValuesSourceInspectionId: latestVersion?.inspectionId || null,
     firstSeen: productDto.createdAt,
     lastInspection: recentInspections[0]?.date || null,
     riskScore: riskDto?.riskScore ?? 0,

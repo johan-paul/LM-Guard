@@ -54,6 +54,7 @@ class AiViolationEvidence {
     required this.severity,
     this.remediation,
     this.confidence = 0,
+    this.value,
     this.boundingBox,
   });
 
@@ -67,6 +68,10 @@ class AiViolationEvidence {
   final String severity;
   final String? remediation;
   final double confidence;
+  /// What the AI actually read off the package for this field (the backend's
+  /// `observedValue`) - null when the violation is an absence rather than a
+  /// present-but-wrong reading.
+  final String? value;
   final AiBoundingBox? boundingBox;
 }
 

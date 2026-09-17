@@ -102,6 +102,17 @@ export default function ProductDetail() {
 
   const listing = product.digitalListing;
 
+  // Traces the currently-shown MRP/net-quantity back to the exact inspection that recorded
+  // them, so a surprising value is a "look at inspection X" instead of a dead end.
+  const declaredValuesSourceHint = product.declaredValuesSourceInspectionId ? (
+    <>
+      from{' '}
+      <Link className="link-quiet" to={`/inspections/${product.declaredValuesSourceInspectionId}`}>
+        {product.declaredValuesSourceInspectionId}
+      </Link>
+    </>
+  ) : null;
+
   const tabs = [
     { value: 'overview', label: 'Overview' },
     { value: 'inspections', label: 'Inspection History', count: product.inspections.length },
@@ -183,8 +194,8 @@ export default function ProductDetail() {
                 <Fact label="Product ID" value={product.id} mono />
                 <Fact label="Category" value={product.category} />
                 <Fact label="Manufacturer" value={product.manufacturer} />
-                <Fact label="Net quantity" value={product.netQuantity} />
-                <Fact label="Retail sale price" value={product.mrp} />
+                <Fact label="Net quantity" value={product.netQuantity} hint={declaredValuesSourceHint} />
+                <Fact label="Retail sale price" value={product.mrp} hint={declaredValuesSourceHint} />
                 <Fact label="Barcode" value={product.barcode} mono />
                 <Fact label="First recorded" value={formatDate(product.firstSeen)} />
                 <Fact label="Last inspection" value={formatDate(product.lastInspection)} />
@@ -440,11 +451,12 @@ export default function ProductDetail() {
   );
 }
 
-function Fact({ label, value, mono = false }) {
+function Fact({ label, value, mono = false, hint = null }) {
   return (
     <div className="bg-surface px-5 py-3.5">
       <dt className="text-micro font-semibold uppercase text-ink-400">{label}</dt>
       <dd className={`mt-1 text-13 text-ink-900 ${mono ? 'font-mono' : 'font-medium'}`}>{value}</dd>
+      {hint && <dd className="mt-0.5 text-[11px] text-ink-400">{hint}</dd>}
     </div>
   );
 }

@@ -9,6 +9,7 @@ import '../data/models/evidence.dart';
 import '../data/models/inspection.dart';
 import '../data/models/product.dart';
 import '../data/models/product_history.dart';
+import '../data/models/product_suggestion.dart';
 import '../data/repositories/inspection_repository.dart';
 import '../data/services/api_client.dart' show ApiException;
 import '../data/services/ar_measurement_service.dart';
@@ -86,6 +87,9 @@ class DraftController extends ChangeNotifier {
   /// about the package photo specifically) so the two don't overwrite one
   /// another if an officer tries both actions in the same session.
   String? _measurementError;
+  /// Set when [attachExistingProduct] fails - distinct from the other error
+  /// fields so it doesn't clobber an unrelated capture/measurement error.
+  String? _productAttachError;
 
   Inspection get inspection => _inspection;
   InspectionStep get step => _step;
@@ -100,6 +104,7 @@ class DraftController extends ChangeNotifier {
   bool get packagePhotoCaptured => _packagePhotoPath != null;
   String? get captureError => _captureError;
   String? get measurementError => _measurementError;
+  String? get productAttachError => _productAttachError;
 
   int get stepNumber => _step.number;
   int get stepCount => InspectionStep.values.length;
@@ -175,12 +180,54 @@ class DraftController extends ChangeNotifier {
       _inspection.establishment.trim().isNotEmpty &&
       _inspection.location.trim().isNotEmpty;
 
+  /// Existing registered products matching [query] - backs the Information
+  /// step's product-name autocomplete.
+  Future<List<ProductSuggestion>> searchProducts(String query) => _repository.searchProducts(query);
+
+  /// Attaches an already-registered product (picked from [searchProducts])
+  /// to this inspection, instead of letting a later AI scan mint a new
+  /// product from this scan's own OCR reading of the name. Distinct from
+  /// [updateProductName], which only ever edits local, not-yet-registered
+  /// draft state.
+  Future<void> attachExistingProduct(String productId, String productName) async {
+    _busy = true;
+    _productAttachError = null;
+    notifyListeners();
+    try {
+      _inspection = await _repository.identifyProduct(
+        _inspection.id,
+        Product(
+          id: productId,
+          name: productName,
+          brand: '',
+          manufacturer: '',
+          category: '',
+          batchNumber: '',
+          manufacturedOn: DateTime.now(),
+          expiresOn: DateTime.now(),
+          barcode: '',
+          netQuantity: '',
+          mrp: '',
+        ),
+      );
+      _dirty = true;
+    } catch (exception) {
+      final String reason = exception is ApiException ? exception.message : 'an unexpected error occurred';
+      _productAttachError = 'Could not attach "$productName": $reason';
+    } finally {
+      _busy = false;
+      notifyListeners();
+    }
+  }
+
   /* ---------------- Product identification ---------------- */
   //
-  // There is no manual identification step: the backend identifies the
+  // Besides the explicit attach above, the backend also identifies the
   // product from the package photo itself (COMMODITY_NAME/MANUFACTURER read
   // off the image) as part of [runAiEvaluation] and returns it as
-  // AIEvaluation.identifiedProduct, merged onto the inspection there.
+  // AIEvaluation.identifiedProduct, merged onto the inspection there - that
+  // remains the only path when the inspector didn't pick an existing product
+  // up front.
 
   /// Product History for the identified product - previous inspections,
   /// violations and repeats. Throws if no product has been identified yet

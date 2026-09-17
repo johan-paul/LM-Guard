@@ -285,6 +285,13 @@ class _ViolationCard extends StatelessWidget {
           Text(violation.fieldName, style: AppText.recordTitle),
           const SizedBox(height: 6),
           Text(violation.finding, style: AppText.body),
+          if (violation.value != null && violation.value!.trim().isNotEmpty) ...<Widget>[
+            const SizedBox(height: 6),
+            Text(
+              'Detected: ${violation.value}',
+              style: AppText.caption.copyWith(fontWeight: FontWeight.w600),
+            ),
+          ],
           if (violation.remediation != null) ...<Widget>[
             const SizedBox(height: 8),
             Text(

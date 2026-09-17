@@ -7,6 +7,7 @@ import '../models/finding.dart';
 import '../models/inspection.dart';
 import '../models/product.dart';
 import '../models/product_history.dart';
+import '../models/product_suggestion.dart';
 import '../services/api_client.dart';
 
 /// Data access for inspections.
@@ -42,6 +43,13 @@ abstract class InspectionRepository {
   /// The product-identification step: attaches an existing or newly
   /// registered product to an inspection already opened.
   Future<Inspection> identifyProduct(String inspectionId, Product product);
+
+  /// Existing registered products whose name matches [query] (case-insensitive,
+  /// partial) - backs the Information step's product-name autocomplete so an
+  /// inspector can attach an already-known product instead of the AI minting
+  /// a new one from this scan's OCR reading. An empty or blank [query]
+  /// returns no results rather than the entire catalogue.
+  Future<List<ProductSuggestion>> searchProducts(String query);
 
   /// Aggregated inspection/violation history for the product under
   /// inspection - the Product History step.
@@ -168,6 +176,17 @@ class MockInspectionRepository implements InspectionRepository {
     final Inspection updated = current.copyWith(product: product, updatedAt: DateTime.now());
     _upsert(updated);
     return updated;
+  }
+
+  @override
+  Future<List<ProductSuggestion>> searchProducts(String query) async {
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    final String needle = query.trim().toLowerCase();
+    if (needle.isEmpty) return const <ProductSuggestion>[];
+    return MockData.catalogue()
+        .where((Product product) => product.name.toLowerCase().contains(needle))
+        .map((Product product) => ProductSuggestion(id: product.id, name: product.name, brand: product.brand))
+        .toList();
   }
 
   @override
@@ -493,6 +512,17 @@ class ApiInspectionRepository implements InspectionRepository {
   }
 
   @override
+  Future<List<ProductSuggestion>> searchProducts(String query) async {
+    final String needle = query.trim();
+    if (needle.isEmpty) return const <ProductSuggestion>[];
+    final Map<String, dynamic> page = await _client.get(
+      _withQuery(ApiRoutes.products, <String, String>{'search': needle, 'size': '8'}),
+    ) as Map<String, dynamic>;
+    final List<dynamic> items = page['items'] as List<dynamic>? ?? <dynamic>[];
+    return items.map((dynamic json) => ProductSuggestion.fromJson(json as Map<String, dynamic>)).toList();
+  }
+
+  @override
   Future<ProductHistorySummary> fetchProductHistory(String productId) async {
     // Two independent backend views of the same product, fetched together: the inspection
     // outcome counts (pass/fail history) and the raw declaration-version ledger (what the
@@ -664,6 +694,7 @@ class ApiInspectionRepository implements InspectionRepository {
         aiSuggestedStatus: CheckResult.compliant,
         confidenceScore: (field?['confidence'] as num?)?.toDouble() ?? 0,
         explanation: 'No issue detected for this declaration.',
+        detectedIssue: field?['value'] as String?,
       );
     }).toList();
 
@@ -684,6 +715,7 @@ class ApiInspectionRepository implements InspectionRepository {
           severity: v['severity'] as String? ?? 'MAJOR',
           remediation: v['remediation'] as String?,
           confidence: (v['decisionConfidence'] as num?)?.toDouble() ?? 0,
+          value: v['observedValue'] as String?,
           boundingBox: hasRegion
               ? AiBoundingBox(
                   x: x.toDouble(),

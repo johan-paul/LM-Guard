@@ -199,6 +199,13 @@ class _AiSuggestionRow extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(suggestion.explanation, style: AppText.caption),
+                  if (suggestion.detectedIssue != null && suggestion.detectedIssue!.trim().isNotEmpty) ...<Widget>[
+                    const SizedBox(height: 3),
+                    Text(
+                      'Detected: ${suggestion.detectedIssue}',
+                      style: AppText.caption.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ],
                   if (item.isAnswered && !matches) ...<Widget>[
                     const SizedBox(height: 3),
                     Text(
