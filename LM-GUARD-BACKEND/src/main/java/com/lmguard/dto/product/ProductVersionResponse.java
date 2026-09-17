@@ -17,6 +17,9 @@ public record ProductVersionResponse(
         String origin,
         String consumerCare,
         Instant capturedAt,
-        VersionSource source
+        VersionSource source,
+        @Schema(description = "The inspection that produced this snapshot; null for a version "
+                + "sourced from an online-listing capture", nullable = true)
+        UUID inspectionId
 ) {
 }

@@ -5,7 +5,6 @@ import com.lmguard.ai.AIAnalysisService;
 import com.lmguard.ai.ExtractedFact;
 import com.lmguard.config.properties.RulesProperties;
 import com.lmguard.dto.inspection.InspectionResponse;
-import com.lmguard.dto.product.ProductCreateRequest;
 import com.lmguard.entity.Evidence;
 import com.lmguard.entity.ExtractedField;
 import com.lmguard.entity.Inspection;
@@ -278,8 +277,11 @@ public class InspectionAnalysisService {
                 .filter(ExtractedFact::isPresent)
                 .map(ExtractedFact::value)
                 .orElse(inspection != null ? inspection.getEstablishment() : null);
-        UUID createdId = productService.create(new ProductCreateRequest(name, brand, null, null)).id();
-        return productService.requireById(createdId);
+        // findOrCreate, not create: this is a guess from OCR/the AI, not an admin's deliberate
+        // registration - reuse an existing product whose name+brand (or barcode) already match
+        // rather than minting a near-duplicate every time the AI's phrasing varies slightly
+        // between scans of the same physical product.
+        return productService.findOrCreate(name, brand, null);
     }
 
     /** Replaces any previous AI-derived observations, so re-analysing an inspection is
@@ -457,12 +459,17 @@ public class InspectionAnalysisService {
 
     private void recordProductVersion(Inspection inspection, AIAnalysisResult analysis) {
         Map<String, String> declared = new HashMap<>();
+        Map<String, Double> confidences = new HashMap<>();
         for (String fieldName : ProductField.VERSIONED_FIELDS) {
             analysis.fact(fieldName)
                     .filter(ExtractedFact::isPresent)
-                    .ifPresent(fact -> declared.put(fieldName, fact.value()));
+                    .ifPresent(fact -> {
+                        declared.put(fieldName, fact.value());
+                        confidences.put(fieldName, fact.confidence());
+                    });
         }
-        productService.recordVersionIfChanged(inspection.getProduct(), declared, VersionSource.INSPECTION);
+        productService.recordVersionIfChanged(inspection.getProduct(), inspection, declared, confidences,
+                rulesProperties.defaultMinConfidence(), VersionSource.INSPECTION);
     }
 
     /** Stored with 4 decimal places to match the NUMERIC(5,4) columns. */

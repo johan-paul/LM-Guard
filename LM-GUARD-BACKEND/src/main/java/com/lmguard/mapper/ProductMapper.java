@@ -42,7 +42,8 @@ public class ProductMapper {
                 version.getOrigin(),
                 version.getConsumerCare(),
                 version.getCapturedAt(),
-                version.getSource()
+                version.getSource(),
+                version.getInspection() == null ? null : version.getInspection().getId()
         );
     }
 }

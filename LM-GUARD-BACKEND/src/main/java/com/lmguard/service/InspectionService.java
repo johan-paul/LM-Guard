@@ -6,7 +6,6 @@ import com.lmguard.dto.inspection.ImageUploadResponse;
 import com.lmguard.dto.inspection.InspectionAssignmentRequest;
 import com.lmguard.dto.inspection.InspectionCreateRequest;
 import com.lmguard.dto.inspection.InspectionResponse;
-import com.lmguard.dto.product.ProductCreateRequest;
 import com.lmguard.entity.AssignmentHistory;
 import com.lmguard.entity.Evidence;
 import com.lmguard.entity.ExtractedField;
@@ -169,9 +168,11 @@ public class InspectionService {
         if (request.productName() == null || request.productName().isBlank()) {
             throw new BadRequestException("Supply either productId, or productName to register a new product inline");
         }
-        UUID createdId = productService.create(new ProductCreateRequest(
-                request.productName(), request.brand(), request.category(), request.barcode())).id();
-        return productService.requireById(createdId);
+        // findOrCreate, not create: a name typed inline here is the same kind of guess an OCR
+        // reading is, not an admin's deliberate "register this exact product" action - reuse an
+        // existing match instead of minting a near-duplicate.
+        return productService.findOrCreate(
+                request.productName(), request.brand(), request.barcode(), request.category());
     }
 
     /**
@@ -312,9 +313,10 @@ public class InspectionService {
             // own step, not necessarily known at creation time.
             return null;
         }
-        UUID createdId = productService.create(new ProductCreateRequest(
-                request.productName(), request.brand(), request.category(), request.barcode())).id();
-        return productService.requireById(createdId);
+        // findOrCreate, not create: see resolveInlineProduct's comment - same reasoning applies
+        // to a product named inline while opening the inspection.
+        return productService.findOrCreate(
+                request.productName(), request.brand(), request.barcode(), request.category());
     }
 
     // ------------------------------------------------------------------

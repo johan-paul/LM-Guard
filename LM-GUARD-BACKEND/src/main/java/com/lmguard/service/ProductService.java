@@ -105,6 +105,65 @@ public class ProductService {
         return productMapper.toResponse(product);
     }
 
+    /**
+     * Resolves a product from an AI/OCR reading (or an inspector's free-text entry) without
+     * minting a duplicate {@link Product} row for what is really the same product read
+     * slightly differently. Deliberately used only by the two paths that are *guessing* a
+     * product's identity from a photo or a free-text field
+     * ({@code InspectionAnalysisService#resolveProductFromAnalysis},
+     * {@code InspectionService#resolveInlineProduct}) - never by {@link #create}, which is an
+     * admin's explicit "register this exact product" action and must not be silently redirected
+     * into reusing something else.
+     *
+     * <p>Matching is deliberately exact, not fuzzy: barcode first (the one identifier that
+     * genuinely disambiguates), then case/edge-whitespace-insensitive name+brand. No
+     * Levenshtein/similarity matching - a false merge of two different products would corrupt
+     * both products' compliance history, which is worse than occasionally missing a real
+     * duplicate and creating one extra row.
+     *
+     * @param name    required; the caller is responsible for its own "not detected" fallback
+     *                (e.g. "Unidentified product") before calling this
+     * @param category only used when a new product is actually created; an existing matched
+     *                 product's category is never overwritten by a guess from this call
+     */
+    @Transactional
+    public Product findOrCreate(String name, String brand, String barcode, String category) {
+        String cleanBarcode = trimToNull(barcode);
+        if (cleanBarcode != null) {
+            Optional<Product> byBarcode = productRepository.findByBarcode(cleanBarcode);
+            if (byBarcode.isPresent()) {
+                log.debug("Matched existing product {} by barcode", byBarcode.get().getId());
+                return byBarcode.get();
+            }
+        }
+
+        String cleanName = trimToNull(name);
+        String cleanBrand = trimToNull(brand);
+        if (cleanName != null) {
+            List<Product> byNameAndBrand = productRepository.findByNameAndBrandExact(cleanName, cleanBrand);
+            if (!byNameAndBrand.isEmpty()) {
+                log.debug("Matched existing product {} by name+brand", byNameAndBrand.get(0).getId());
+                return byNameAndBrand.get(0);
+            }
+        }
+
+        Product created = productRepository.save(Product.builder()
+                .productName(cleanName == null ? "Unidentified product" : cleanName)
+                .brand(cleanBrand)
+                .category(normaliseCategory(category))
+                .barcode(cleanBarcode)
+                .build());
+        log.info("Registered product {} ({}) via findOrCreate - no existing match", created.getProductName(), created.getId());
+        return created;
+    }
+
+    /** Overload for callers with no category to offer (e.g. an AI reading, which never
+     * produces one). */
+    @Transactional
+    public Product findOrCreate(String name, String brand, String barcode) {
+        return findOrCreate(name, brand, barcode, null);
+    }
+
     @Transactional(readOnly = true)
     public Page<Product> search(String search, String category, Pageable pageable) {
         String cleanSearch = trimToNull(search);
@@ -347,20 +406,37 @@ public class ProductService {
      * recent one. Repeating an unchanged snapshot on every inspection would inflate the
      * product-change risk factor and drown the real changes.
      *
+     * <p>Each field is only overwritten when this run's reading is both present <em>and</em> at
+     * or above {@code minConfidence} - otherwise the previous version's value for that field is
+     * carried forward untouched. Without this, a single low-confidence misread (or simply a
+     * field the AI didn't detect on this particular photo, e.g. from glare) would silently
+     * become the product's new "current" declared value shown to every admin viewer from then
+     * on, discarding a perfectly good earlier reading. {@code inspection} (nullable) records
+     * which inspection produced this snapshot, so a value that does look wrong can be traced
+     * back to exactly where it came from instead of just "the number is wrong, somehow."
+     *
      * @return the new version when one was written, otherwise empty
      */
     @Transactional
     public Optional<ProductVersion> recordVersionIfChanged(Product product,
+                                                           Inspection inspection,
                                                            Map<String, String> declaredValues,
+                                                           Map<String, Double> confidences,
+                                                           double minConfidence,
                                                            VersionSource source) {
-        String mrp = declaredValues.get(com.lmguard.entity.enums.ProductField.MRP);
-        String netQuantity = declaredValues.get(com.lmguard.entity.enums.ProductField.NET_QUANTITY);
-        String manufacturer = declaredValues.get(com.lmguard.entity.enums.ProductField.MANUFACTURER);
-        String origin = declaredValues.get(com.lmguard.entity.enums.ProductField.ORIGIN);
-        String consumerCare = declaredValues.get(com.lmguard.entity.enums.ProductField.CONSUMER_CARE);
-
         Optional<ProductVersion> latest =
                 productVersionRepository.findFirstByProductIdOrderByVersionNumberDesc(product.getId());
+
+        String mrp = resolveField(declaredValues, confidences, minConfidence, ProductField.MRP,
+                latest.map(ProductVersion::getMrp).orElse(null));
+        String netQuantity = resolveField(declaredValues, confidences, minConfidence, ProductField.NET_QUANTITY,
+                latest.map(ProductVersion::getNetQuantity).orElse(null));
+        String manufacturer = resolveField(declaredValues, confidences, minConfidence, ProductField.MANUFACTURER,
+                latest.map(ProductVersion::getManufacturer).orElse(null));
+        String origin = resolveField(declaredValues, confidences, minConfidence, ProductField.ORIGIN,
+                latest.map(ProductVersion::getOrigin).orElse(null));
+        String consumerCare = resolveField(declaredValues, confidences, minConfidence, ProductField.CONSUMER_CARE,
+                latest.map(ProductVersion::getConsumerCare).orElse(null));
 
         if (latest.isPresent() && unchanged(latest.get(), mrp, netQuantity, manufacturer, origin, consumerCare)) {
             log.debug("Declared values unchanged for product {}; no new version written", product.getId());
@@ -370,6 +446,7 @@ public class ProductService {
         int nextVersion = productVersionRepository.findMaxVersionNumber(product.getId()) + 1;
         ProductVersion version = productVersionRepository.save(ProductVersion.builder()
                 .product(product)
+                .inspection(inspection)
                 .versionNumber(nextVersion)
                 .mrp(truncate(mrp, 100))
                 .netQuantity(truncate(netQuantity, 100))
@@ -379,8 +456,19 @@ public class ProductService {
                 .source(source)
                 .build());
 
-        log.info("Recorded product version {} for product {}", nextVersion, product.getId());
+        log.info("Recorded product version {} for product {} (inspection {})",
+                nextVersion, product.getId(), inspection == null ? "none" : inspection.getId());
         return Optional.of(version);
+    }
+
+    /** This run's reading for {@code field} wins only if it's present and confident enough;
+     * otherwise the product keeps whatever it last reliably had for that field. */
+    private String resolveField(Map<String, String> declaredValues, Map<String, Double> confidences,
+                                double minConfidence, String field, String previousValue) {
+        String newValue = declaredValues.get(field);
+        Double confidence = confidences.get(field);
+        boolean acceptNew = newValue != null && confidence != null && confidence >= minConfidence;
+        return acceptNew ? newValue : previousValue;
     }
 
     /** Number of recorded changes: the first snapshot is a baseline, not a change. */

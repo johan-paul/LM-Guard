@@ -52,6 +52,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
 
@@ -152,7 +153,8 @@ class InspectionAnalysisServiceTest {
         when(inspectionRepository.save(any(Inspection.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(inspectionRepository.countPreviousNonCompliant(any(), any())).thenReturn(0L);
         when(productService.changeCount(any())).thenReturn(0L);
-        when(productService.recordVersionIfChanged(any(), any(), any())).thenReturn(Optional.empty());
+        when(productService.recordVersionIfChanged(any(), any(), any(), any(), anyDouble(), any()))
+                .thenReturn(Optional.empty());
         when(evidenceService.record(any(EvidenceRequest.class))).thenAnswer(invocation -> {
             EvidenceRequest request = invocation.getArgument(0);
             Evidence evidence = Evidence.builder()

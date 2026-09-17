@@ -31,6 +31,14 @@ public class ProductVersion extends BaseEntity {
     @JoinColumn(name = "product_id", nullable = false)
     private Product product;
 
+    /** Which inspection produced this snapshot, when there is one - null for a version sourced
+     * from an online-listing capture (see VersionSource), which has no inspection behind it.
+     * Lets a declared value that looks wrong be traced back to exactly where it came from,
+     * rather than just "the number is wrong, somehow." */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "inspection_id")
+    private Inspection inspection;
+
     @Column(name = "version_number", nullable = false)
     private Integer versionNumber;
 

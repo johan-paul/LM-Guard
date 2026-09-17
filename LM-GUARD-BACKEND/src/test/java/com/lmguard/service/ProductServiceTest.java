@@ -3,9 +3,11 @@ package com.lmguard.service;
 import com.lmguard.dto.product.ProductRiskResponse;
 import com.lmguard.dto.product.ProductSummaryResponse;
 import com.lmguard.dto.product.ProductVersionEntry;
+import com.lmguard.entity.Inspection;
 import com.lmguard.entity.Product;
 import com.lmguard.entity.ProductVersion;
 import com.lmguard.entity.RiskScore;
+import com.lmguard.entity.enums.ProductField;
 import com.lmguard.entity.enums.RiskLevel;
 import com.lmguard.entity.enums.VersionSource;
 import com.lmguard.entity.enums.ViolationCaseStatus;
@@ -34,12 +36,15 @@ import org.springframework.data.domain.Pageable;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -190,5 +195,150 @@ class ProductServiceTest {
 
         assertThat(entry.previousMrp()).isNull();
         assertThat(entry.previousNetQuantity()).isNull();
+    }
+
+    // ------------------------------------------------------------------
+    // findOrCreate - product identity resolution for AI/inspector-guessed identity, never for
+    // an admin's deliberate registration via create() (which stays a blind insert).
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("findOrCreate matches an existing product by barcode before considering name/brand at all")
+    void findOrCreateMatchesByBarcode() {
+        UUID existingId = UUID.randomUUID();
+        Product existing = product(existingId);
+        when(productRepository.findByBarcode("8901030826829")).thenReturn(Optional.of(existing));
+
+        Product result = service().findOrCreate("Some Other Name", "Some Other Brand", "8901030826829");
+
+        assertThat(result.getId()).isEqualTo(existingId);
+        verify(productRepository, never()).findByNameAndBrandExact(any(), any());
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("findOrCreate matches an existing product by name+brand, trimming edge whitespace before querying")
+    void findOrCreateMatchesByNameAndBrand() {
+        UUID existingId = UUID.randomUUID();
+        Product existing = product(existingId);
+        when(productRepository.findByBarcode(any())).thenReturn(Optional.empty());
+        when(productRepository.findByNameAndBrandExact("Test Oil", "Acme")).thenReturn(List.of(existing));
+
+        Product result = service().findOrCreate("  Test Oil  ", "  Acme  ", null);
+
+        assertThat(result.getId()).isEqualTo(existingId);
+        verify(productRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("findOrCreate creates a new product only when nothing matches by barcode or name+brand")
+    void findOrCreateCreatesNewWhenNoMatch() {
+        when(productRepository.findByBarcode(any())).thenReturn(Optional.empty());
+        when(productRepository.findByNameAndBrandExact(any(), any())).thenReturn(List.of());
+        when(productRepository.save(any(Product.class))).thenAnswer(invocation -> {
+            Product p = invocation.getArgument(0);
+            p.setId(UUID.randomUUID());
+            return p;
+        });
+
+        Product result = service().findOrCreate("Brand New Snack", "NewCo", "1112223334445");
+
+        assertThat(result.getProductName()).isEqualTo("Brand New Snack");
+        assertThat(result.getBrand()).isEqualTo("NewCo");
+        assertThat(result.getBarcode()).isEqualTo("1112223334445");
+    }
+
+    // ------------------------------------------------------------------
+    // recordVersionIfChanged - the confidence gate: a low-confidence (or absent) reading must
+    // never silently overwrite what a product's declared history already reliably had.
+    // ------------------------------------------------------------------
+
+    @Test
+    @DisplayName("recordVersionIfChanged ignores a changed-but-low-confidence reading, keeping the previous value")
+    void recordVersionIfChangedIgnoresLowConfidenceChange() {
+        UUID productId = UUID.randomUUID();
+        Product p = product(productId);
+        ProductVersion previous = ProductVersion.builder()
+                .product(p).versionNumber(1).mrp("99").netQuantity("500 g").source(VersionSource.INSPECTION).build();
+        when(productVersionRepository.findFirstByProductIdOrderByVersionNumberDesc(productId))
+                .thenReturn(Optional.of(previous));
+
+        // A misread of 199 with confidence well below the gate - must not become "current".
+        Optional<ProductVersion> result = service().recordVersionIfChanged(
+                p, null, Map.of(ProductField.MRP, "199"), Map.of(ProductField.MRP, 0.2),
+                0.70, VersionSource.INSPECTION);
+
+        assertThat(result).isEmpty();
+        verify(productVersionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("recordVersionIfChanged accepts a changed, confident reading and records which inspection produced it")
+    void recordVersionIfChangedAcceptsConfidentChange() {
+        UUID productId = UUID.randomUUID();
+        Product p = product(productId);
+        ProductVersion previous = ProductVersion.builder()
+                .product(p).versionNumber(1).mrp("99").source(VersionSource.INSPECTION).build();
+        when(productVersionRepository.findFirstByProductIdOrderByVersionNumberDesc(productId))
+                .thenReturn(Optional.of(previous));
+        when(productVersionRepository.findMaxVersionNumber(productId)).thenReturn(1);
+        when(productVersionRepository.save(any(ProductVersion.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        Inspection inspection = Inspection.builder().build();
+        inspection.setId(UUID.randomUUID());
+
+        Optional<ProductVersion> result = service().recordVersionIfChanged(
+                p, inspection, Map.of(ProductField.MRP, "149"), Map.of(ProductField.MRP, 0.95),
+                0.70, VersionSource.INSPECTION);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getMrp()).isEqualTo("149");
+        assertThat(result.get().getInspection()).isEqualTo(inspection);
+    }
+
+    @Test
+    @DisplayName("recordVersionIfChanged never writes when nothing actually changed, regardless of confidence")
+    void recordVersionIfChangedSkipsUnchangedValues() {
+        UUID productId = UUID.randomUUID();
+        Product p = product(productId);
+        ProductVersion previous = ProductVersion.builder()
+                .product(p).versionNumber(1).mrp("99").source(VersionSource.INSPECTION).build();
+        when(productVersionRepository.findFirstByProductIdOrderByVersionNumberDesc(productId))
+                .thenReturn(Optional.of(previous));
+
+        Optional<ProductVersion> result = service().recordVersionIfChanged(
+                p, null, Map.of(ProductField.MRP, "99"), Map.of(ProductField.MRP, 0.95),
+                0.70, VersionSource.INSPECTION);
+
+        assertThat(result).isEmpty();
+        verify(productVersionRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("recordVersionIfChanged preserves the previous value for a field the AI simply didn't read this time")
+    void recordVersionIfChangedPreservesUndetectedField() {
+        // Reproduces a real pre-existing bug: a field absent from this run's reading (e.g. glare
+        // obscured the manufacturer this time) must not silently blank out a previously-recorded
+        // value just because it's missing from `declaredValues` this run.
+        UUID productId = UUID.randomUUID();
+        Product p = product(productId);
+        ProductVersion previous = ProductVersion.builder()
+                .product(p).versionNumber(1).mrp("99").manufacturer("ABC Foods Pvt Ltd")
+                .source(VersionSource.INSPECTION).build();
+        when(productVersionRepository.findFirstByProductIdOrderByVersionNumberDesc(productId))
+                .thenReturn(Optional.of(previous));
+        when(productVersionRepository.findMaxVersionNumber(productId)).thenReturn(1);
+        when(productVersionRepository.save(any(ProductVersion.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // MRP changed (confidently); MANUFACTURER wasn't detected at all this run.
+        Optional<ProductVersion> result = service().recordVersionIfChanged(
+                p, null, Map.of(ProductField.MRP, "149"), Map.of(ProductField.MRP, 0.95),
+                0.70, VersionSource.INSPECTION);
+
+        assertThat(result).isPresent();
+        assertThat(result.get().getMrp()).isEqualTo("149");
+        assertThat(result.get().getManufacturer())
+                .as("manufacturer must carry forward, not be blanked, since this run said nothing about it")
+                .isEqualTo("ABC Foods Pvt Ltd");
     }
 }
