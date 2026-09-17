@@ -42,3 +42,6 @@ ai-service/.venv/
 ai-service/**/__pycache__/
 ai-service/.pytest_cache/
 ai-service/*.egg-info/
+# Local Tesseract language-model data (see .env.example's TESSDATA_PREFIX) - large binary
+# files, redownloadable from tesseract-ocr/tessdata_fast, not project source.
+ai-service/.tessdata/

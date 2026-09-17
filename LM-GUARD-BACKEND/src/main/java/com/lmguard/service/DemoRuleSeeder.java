@@ -24,7 +24,10 @@ import java.util.Map;
  *
  * <p>Without this, a fresh Supabase project would have no rules and the very first inspection
  * would fail - a poor first five minutes for a new team member, and a bad surprise on demo
- * day. Seeding is idempotent: if the version already exists, nothing is written.
+ * day. Seeding is idempotent per rule code, not per version: an already-seeded database is
+ * never touched for a rule code it already has, but a rule code added to the bundled ruleset
+ * after a database was first seeded (e.g. a new compliance check shipped later) is still
+ * picked up on the next restart, rather than silently never reaching that database at all.
  *
  * <p>Controlled by {@code RULES_SEED_DEMO}, which defaults to off under the {@code prod}
  * profile. Demo rules have no business appearing in a production database by accident.
@@ -55,30 +58,26 @@ public class DemoRuleSeeder implements ApplicationRunner {
                 ? rulesProperties.activeVersion()
                 : ruleSet.rulesetVersion();
 
-        if (ruleRepository.existsByVersion(version)) {
-            log.info("Ruleset '{}' already present in the database ({} active rules); not seeding",
-                    version, ruleRepository.countByVersionAndActiveTrue(version));
-            return;
-        }
-
-        List<Rule> rules = ruleSet.rules().stream()
+        List<Rule> newRules = ruleSet.rules().stream()
+                .filter(definition -> ruleRepository.findByRuleCodeAndVersion(definition.ruleCode(), version).isEmpty())
                 .map(definition -> toEntity(definition, version, ruleSet))
                 .filter(java.util.Objects::nonNull)
                 .toList();
 
-        if (rules.isEmpty()) {
-            log.warn("Bundled sample ruleset '{}' contained no usable rules", version);
+        if (newRules.isEmpty()) {
+            log.info("Ruleset '{}' already has all {} bundled rule(s) ({} active); not seeding",
+                    version, ruleSet.rules().size(), ruleRepository.countByVersionAndActiveTrue(version));
             return;
         }
 
-        ruleRepository.saveAll(rules);
+        ruleRepository.saveAll(newRules);
         ruleCatalog.evict(version);
         if (ruleSet.isSample()) {
-            log.info("Seeded {} DEMO rules for ruleset version '{}'. These are sample rules and are NOT "
-                    + "official Legal Metrology regulations.", rules.size(), version);
+            log.info("Seeded {} new DEMO rule(s) for ruleset version '{}'. These are sample rules and are NOT "
+                    + "official Legal Metrology regulations.", newRules.size(), version);
         } else {
-            log.info("Seeded {} rules for ruleset version '{}' from {}.",
-                    rules.size(), version, rulesProperties.sampleFile());
+            log.info("Seeded {} new rule(s) for ruleset version '{}' from {}.",
+                    newRules.size(), version, rulesProperties.sampleFile());
         }
     }
 
@@ -90,6 +89,8 @@ public class DemoRuleSeeder implements ApplicationRunner {
         putIfPresent(parameters, "min", definition.min());
         putIfPresent(parameters, "max", definition.max());
         putIfPresent(parameters, "minLength", definition.minLength());
+        putIfPresent(parameters, "bandField", definition.bandField());
+        putIfPresent(parameters, "bands", definition.bands());
         putIfPresent(parameters, "finding", definition.finding());
         putIfPresent(parameters, "remediation", definition.remediation());
 
