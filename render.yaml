@@ -55,18 +55,19 @@ services:
 
   # ---------------------------------------------------------------------
   # Python/FastAPI AI service (OCR + Gemini Vision extraction)
+  # Docker, not Render's native Python runtime: Indic-script OCR needs the
+  # real `tesseract` binary + language packs (see ai-service/Dockerfile's
+  # apt-get install), which the native Python buildpack has no way to
+  # install - it silently degraded to English-only OCR in production.
   # ---------------------------------------------------------------------
   - type: web
     name: lm-guard-ai-service
-    runtime: python
-    rootDir: LM-GUARD-BACKEND/ai-service
+    runtime: docker
+    dockerfilePath: ./LM-GUARD-BACKEND/ai-service/Dockerfile
+    dockerContext: ./LM-GUARD-BACKEND/ai-service
     plan: starter
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /health
     envVars:
-      - key: PYTHON_VERSION
-        value: "3.13"
       - key: AI_SERVICE_API_KEY
         sync: false
       - key: GEMINI_API_KEY
