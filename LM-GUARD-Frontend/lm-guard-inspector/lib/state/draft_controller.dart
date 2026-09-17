@@ -10,6 +10,7 @@ import '../data/models/inspection.dart';
 import '../data/models/product.dart';
 import '../data/models/product_history.dart';
 import '../data/repositories/inspection_repository.dart';
+import '../data/services/api_client.dart' show ApiException;
 import '../data/services/ar_measurement_service.dart';
 import '../data/services/evidence_service.dart';
 import '../data/services/image_quality_service.dart';
@@ -280,6 +281,18 @@ class DraftController extends ChangeNotifier {
   /// [measurementError], mirroring how [_captureError] surfaces a photo
   /// capture failure.
   Future<void> measureNumeralHeight(BuildContext context) async {
+    // The backend re-evaluation this triggers needs a product on record (it computes risk
+    // against it) - that only exists once /analyze has run at least once (it auto-identifies
+    // the product from the package photo) or the product was set by hand. Checking this
+    // up front, before ever launching the AR screen, avoids a wasted measurement attempt that
+    // the backend would just reject.
+    if (_inspection.product == null) {
+      _measurementError = 'Capture the package photo and run AI evaluation first - a product '
+          'needs to be on record before a measurement can be checked for compliance.';
+      notifyListeners();
+      return;
+    }
+
     _busy = true;
     _measurementError = null;
     notifyListeners();
@@ -320,8 +333,9 @@ class DraftController extends ChangeNotifier {
       // checklist/violations view picks up the new Rule 7 status.
       await runAiEvaluation();
     } catch (exception) {
-      _measurementError = 'Could not save the measurement (${result.distanceMm!.toStringAsFixed(1)}mm) - '
-          'check the connection and try again.';
+      final String reason = exception is ApiException ? exception.message : 'an unexpected error occurred';
+      _measurementError =
+          'Could not save the measurement (${result.distanceMm!.toStringAsFixed(1)}mm): $reason';
     } finally {
       _busy = false;
       notifyListeners();

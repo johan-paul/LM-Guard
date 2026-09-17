@@ -86,8 +86,17 @@ class ScanStep extends StatelessWidget {
         SecondaryButton(
           label: 'Measure numeral height (Rule 7)',
           icon: Icons.straighten_outlined,
-          onPressed: draft.busy ? null : () => draft.measureNumeralHeight(context),
+          onPressed: draft.busy || !draft.productIdentified
+              ? null
+              : () => draft.measureNumeralHeight(context),
         ),
+        if (!draft.productIdentified) ...<Widget>[
+          const SizedBox(height: 6),
+          const Text(
+            'Capture the package photo and run AI evaluation first.',
+            style: TextStyle(fontSize: 12.5, color: AppColors.inkFaint),
+          ),
+        ],
         if (draft.packagePhotoCaptured) ...<Widget>[
           const SizedBox(height: 18),
           AiEvaluationPanel(draft: draft),

@@ -125,6 +125,18 @@ class InspectionAnalysisServiceTest {
             savedFields.set(saved);
             return saved;
         });
+        // submitMeasurement upserts ONE field via save(), not saveAll() - mirror the same
+        // "reflect what was actually persisted" behaviour so a test can tell whether a
+        // submitted measurement genuinely made it into the facts the next evaluation reads.
+        when(extractedFieldRepository.save(any(ExtractedField.class))).thenAnswer(invocation -> {
+            ExtractedField field = invocation.getArgument(0);
+            List<ExtractedField> merged = new java.util.ArrayList<>(savedFields.get().stream()
+                    .filter(existing -> !existing.getFieldName().equals(field.getFieldName()))
+                    .toList());
+            merged.add(field);
+            savedFields.set(List.copyOf(merged));
+            return field;
+        });
         when(extractedFieldRepository.findByInspectionIdOrderByFieldNameAsc(any()))
                 .thenAnswer(invocation -> savedFields.get());
         when(violationRepository.findByInspectionIdOrderByCreatedAtAsc(any())).thenReturn(List.of());
@@ -242,6 +254,59 @@ class InspectionAnalysisServiceTest {
 
         org.junit.jupiter.api.Assertions.assertThrows(
                 com.lmguard.exception.ResourceNotFoundException.class, () -> service.run(missing));
+    }
+
+    @Test
+    @DisplayName("submitMeasurement rejects a measurement before any product has been identified")
+    void submitMeasurementRequiresProduct() {
+        // No product set (unlike inspectionWithVariant, which always builds one) - reproduces
+        // the exact real-world sequence that threw a bare NullPointerException in testing:
+        // tapping "Measure numeral height" before the package photo/analysis has ever run.
+        Inspection inspection = Inspection.builder()
+                .status(InspectionStatus.PENDING)
+                .build();
+        inspection.setId(UUID.randomUUID());
+        when(inspectionRepository.findDetailedById(inspection.getId())).thenReturn(Optional.of(inspection));
+
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(
+                com.lmguard.exception.BadRequestException.class,
+                () -> service.submitMeasurement(inspection.getId(), "NUMERAL_HEIGHT_MM", "3.5", 0.9))
+                .getErrorCode())
+                .isEqualTo(com.lmguard.exception.ErrorCode.PRODUCT_REQUIRED);
+    }
+
+    @Test
+    @DisplayName("submitMeasurement rejects a fieldName outside the inspector-measured allowlist")
+    void submitMeasurementRejectsUnknownField() {
+        Inspection inspection = inspectionWithVariant(1); // has a product, so the product guard doesn't fire first
+        when(inspectionRepository.findDetailedById(inspection.getId())).thenReturn(Optional.of(inspection));
+
+        assertThat(org.junit.jupiter.api.Assertions.assertThrows(
+                com.lmguard.exception.BadRequestException.class,
+                () -> service.submitMeasurement(inspection.getId(), "MRP", "99", 0.9))
+                .getErrorCode())
+                .isEqualTo(com.lmguard.exception.ErrorCode.VALIDATION_FAILED);
+    }
+
+    @Test
+    @DisplayName("submitMeasurement re-evaluates compliance from a measurement, once a product exists")
+    void submitMeasurementSucceedsAfterProductIdentified() {
+        Inspection inspection = inspectionWithVariant(1);
+        when(inspectionRepository.findDetailedById(inspection.getId())).thenReturn(Optional.of(inspection));
+        when(extractedFieldRepository.findByInspectionIdAndFieldName(inspection.getId(), "NUMERAL_HEIGHT_MM"))
+                .thenReturn(Optional.empty());
+
+        InspectionResponse response =
+                service.submitMeasurement(inspection.getId(), "NUMERAL_HEIGHT_MM", "3.5", 0.9);
+
+        assertThat(response).isNotNull();
+        assertThat(response.status()).isEqualTo(InspectionStatus.IN_PROGRESS);
+        assertThat(response.fields())
+                .as("the submitted measurement must actually be reflected in what's evaluated, not just accepted")
+                .anySatisfy(field -> {
+                    assertThat(field.name()).isEqualTo(ProductField.NUMERAL_HEIGHT_MM);
+                    assertThat(field.value()).isEqualTo("3.5");
+                });
     }
 
     @Test

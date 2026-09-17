@@ -175,13 +175,26 @@ public class InspectionAnalysisService {
      * pipeline {@link #run} uses, sourced from everything currently persisted for this
      * inspection rather than a fresh {@link AIAnalysisResult} - the photo is not re-analysed.
      *
-     * @throws BadRequestException if {@code fieldName} is not one this endpoint accepts
+     * @throws BadRequestException if {@code fieldName} is not one this endpoint accepts, or if
+     *         no product has been identified for this inspection yet (see below)
      * @throws com.lmguard.exception.ResourceNotFoundException if the inspection does not exist
      */
     @Transactional
     public InspectionResponse submitMeasurement(UUID inspectionId, String fieldName, String value, Double confidence) {
         Inspection inspection = inspectionRepository.findDetailedById(inspectionId)
                 .orElseThrow(() -> ResourceNotFoundException.of(ErrorCode.INSPECTION_NOT_FOUND, inspectionId));
+
+        // assessRisk() (called from evaluateAndPersist() below) needs inspection.getProduct(),
+        // which is null until either /analyze has run once (it auto-identifies the product from
+        // the AI's own reading, see run()'s step 1b) or PATCH .../product was called by hand.
+        // Without this guard, submitting a measurement before either of those happened threw a
+        // bare NullPointerException deep in risk assessment - a real bug hit in testing, not a
+        // hypothetical: fail fast here instead, with a message that says what to do.
+        if (inspection.getProduct() == null) {
+            throw new BadRequestException(ErrorCode.PRODUCT_REQUIRED,
+                    "Capture the package photo and run analysis (or identify the product manually) "
+                            + "before submitting a measurement for inspection " + inspectionId);
+        }
 
         String normalizedField = fieldName == null ? "" : fieldName.trim().toUpperCase(Locale.ROOT);
         if (!ProductField.INSPECTOR_MEASURED_FIELDS.contains(normalizedField)) {
